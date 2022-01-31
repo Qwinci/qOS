@@ -33,18 +33,18 @@ build/qos: $(KERNEL_CXX_OBJ) $(KERNEL_ASM_OBJ)
 run: all
 	@ qemu-system-x86_64 -boot d -cdrom build/image.iso -m 2G -machine q35 -cpu qemu64
 
-install:
-	@ if [ -d "limine" ]; then \
+install: build/qos
+#	@ if [ -d "limine" ]; then \
 		cd limine; git pull; cd ..; \
 	  else \
 		git clone https://github.com/limine-bootloader/limine.git --branch=v2.0-branch-binary --depth=1; \
 	  fi
-	@ $(MAKE) -C limine
-	@ mkdir -p build/iso_root
-	@ cp build/qos limine.cfg limine/limine.sys limine/limine-cd.bin limine/limine-eltorito-efi.bin build/iso_root
+#	@ $(MAKE) -C limine
+#	@ mkdir -p build/iso_root
+	@ cp build/qos fonts/Uni2-VGA16.psf limine.cfg limine/limine.sys limine/limine-cd.bin limine/limine-eltorito-efi.bin build/iso_root
 	@ xorriso -as mkisofs -b limine-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot limine-eltorito-efi.bin \
 		--efi-boot-part --efi-boot-image --protective-msdos-label build/iso_root -o build/image.iso -quiet &> /dev/null
-	@ ./limine/limine-install build/image.iso &> /dev/null
+#	@ ./limine/limine-install build/image.iso &> /dev/null
 
 clean:
 	@ rm -rf build/kernel

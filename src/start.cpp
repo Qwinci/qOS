@@ -1,7 +1,7 @@
-#include <cstdint>
 #include <cstddef>
 #include "../thirdparty/stivale/stivale.hpp"
 #include "bootInfo.hpp"
+#include "utils/string.hpp"
 
 static uint8_t stack[8192];
 
@@ -46,7 +46,7 @@ void* stivale2_get_tag(stivale2_struct* stivale2_struct, uint64_t id) {
 
 extern int kernelStart(BootInfo bootInfo);
 
-extern "C" void start(stivale2_struct* stivale2_struct) {
+extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	stivale2_struct_tag_terminal* terminal_tag;
 	terminal_tag = static_cast<stivale2_struct_tag_terminal*>(stivale2_get_tag(stivale2_struct,
 	                                                                           STIVALE2_STRUCT_TAG_TERMINAL_ID));
@@ -61,6 +61,8 @@ extern "C" void start(stivale2_struct* stivale2_struct) {
 	                                                                                       STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID));
 	auto rsdp = reinterpret_cast<stivale2_struct_tag_rsdp*>(stivale2_get_tag(stivale2_struct,
 	                                                                         STIVALE2_STRUCT_TAG_RSDP_ID));
+	auto modules = reinterpret_cast<stivale2_struct_tag_modules*>(stivale2_get_tag(stivale2_struct,
+																				   STIVALE2_STRUCT_TAG_MODULES_ID));
 
 	MemoryMap memoryMap {};
 	memoryMap.count = memoryMap_->entries;
@@ -86,9 +88,17 @@ extern "C" void start(stivale2_struct* stivale2_struct) {
 		memoryMap.entries[i] = entry;
 	}
 
+	uintptr_t fontStart = 0;
+	for (int i = 0; i < modules->module_count; ++i) {
+		if (strcmp(modules->modules[i].string, "Uni2-VGA16.psf")) {
+			fontStart = modules->modules[i].begin;
+		}
+	}
+
 	BootInfo bootInfo {
 		{frameBuffer->framebuffer_width, frameBuffer->framebuffer_height,
 		 frameBuffer->framebuffer_bpp, frameBuffer->framebuffer_addr},
-		memoryMap, rsdp};
+		 fontStart, memoryMap, rsdp};
+
 	kernelStart(bootInfo);
 }

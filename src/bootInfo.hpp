@@ -25,6 +25,7 @@ struct MemoryMap {
 
 struct BootInfo {
 	FrameBuffer frameBuffer;
+	uintptr_t fontStart;
 	MemoryMap memoryMap;
 	void* rsdp;
 };
