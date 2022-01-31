@@ -10,7 +10,8 @@ struct FrameBuffer {
 enum class MemoryType {
 	Usable,
 	FrameBuffer,
-	Kernel
+	Kernel,
+	Unknown
 };
 struct MemoryMapEntry {
 	uint64_t size;

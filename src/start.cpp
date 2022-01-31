@@ -79,6 +79,9 @@ extern "C" void start(stivale2_struct* stivale2_struct) {
 			case STIVALE2_MMAP_KERNEL_AND_MODULES:
 				entry.type = MemoryType::Kernel;
 				break;
+			default:
+				entry.type = MemoryType::Unknown;
+				break;
 		}
 		memoryMap.entries[i] = entry;
 	}
