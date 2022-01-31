@@ -19,8 +19,8 @@ struct MemoryMapEntry {
 	MemoryType type;
 };
 struct MemoryMap {
-	uint64_t count;
-	MemoryMapEntry* entries;
+	uint64_t size;
+	MemoryMapEntry entries[75];
 };
 
 struct BootInfo {

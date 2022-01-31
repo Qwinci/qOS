@@ -198,3 +198,13 @@ Renderer &Renderer::operator<<(int32_t number) {
 Renderer &Renderer::operator<<(int64_t number) {
 	return printNumber(static_cast<int64_t>(number));
 }
+
+Renderer &Renderer::operator<<(bool value) {
+	if (value) {
+		operator<<("true");
+	}
+	else {
+		operator<<("false");
+	}
+	return *this;
+}

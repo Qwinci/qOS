@@ -1,6 +1,10 @@
 #pragma once
 #include "bootInfo.hpp"
 
+namespace std { // NOLINT(cert-dcl58-cpp)
+	constexpr char endl = '\n';
+}
+
 enum class Mode {
 	Normal,
 	Hex,
@@ -26,6 +30,7 @@ public:
 	Renderer& operator<<(int16_t number);
 	Renderer& operator<<(int32_t number);
 	Renderer& operator<<(int64_t number);
+	Renderer& operator<<(bool value);
 	Renderer& operator<<(Mode newMode);
 
 private:

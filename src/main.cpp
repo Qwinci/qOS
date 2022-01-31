@@ -1,21 +1,30 @@
 #include "bootInfo.hpp"
 #include "console/renderer.hpp"
+#include "paging/pageFrameAllocator.hpp"
+#include "paging/pageTableManager.hpp"
 
 Renderer globalRenderer;
+PageFrameAllocator globalAllocator;
 
 [[noreturn]] void kernelStart(BootInfo bootInfo) {
-	/*for (int y = 0; y < 16; ++y) {
-		for (int x = 0; x < 16; ++x) {
-			*((uint32_t*)(bootInfo.frameBuffer.address + bootInfo.frameBuffer.bpp / 8 * bootInfo.frameBuffer.width * y +
-			              bootInfo.frameBuffer.bpp / 8 * x)) = 0x00FF00;
-		}
-	}*/
 	globalRenderer = Renderer {bootInfo.frameBuffer, bootInfo.fontStart};
 	globalRenderer.setColor(0x00FF00);
 
-	globalRenderer << 'n' << '\n';
-	globalRenderer << "hello world!hello world!hello world!hello world!hello world!hello world!hello world!hello world!hello world!hello world!hello world!\n";
-	globalRenderer << 'd' << Mode::Binary << 10 << "\n" << Mode::Hex << 84895 << Mode::Normal;
+	globalAllocator = PageFrameAllocator {bootInfo.memoryMap};
+
+	PageTableManager pageTableManager;
+
+	for (size_t i = 0; i < globalAllocator.getTotalMemory(); i += 0x1000) {
+		pageTableManager.mapMemory(i, i);
+	}
+
+	for (size_t i = bootInfo.frameBuffer.address; i < bootInfo.frameBuffer.address + (bootInfo.frameBuffer.width * bootInfo.frameBuffer.height * bootInfo.frameBuffer.bpp) + 0x1000; i += 0x1000) {
+		pageTableManager.mapMemory(i, i);
+	}
+
+	pageTableManager.refresh();
+
+	globalRenderer << "Hi from new page table!" << std::endl;
 
 	while (true) {
 		asm("hlt");
