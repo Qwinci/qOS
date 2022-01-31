@@ -20,7 +20,7 @@
 	for (int i = 0; i < stringLength; ++i) {
 		for (int y = 0; y < 16 * SCALE; ++y) {
 			for (int x = 0; x < 8 * SCALE; ++x) {
-				bool solid = font[(string[i] - 32) * 16 + y / SCALE] & 1 << (x / SCALE);
+				bool solid = font[(string[i] - 32) * 16 + y / SCALE] & 1 << (7 - x / SCALE);
 				*((uint32_t*)(bootInfo.frameBuffer.address + bootInfo.frameBuffer.bpp / 8 * bootInfo.frameBuffer.width * y +
 				              bootInfo.frameBuffer.bpp / 8 * x + xOff * SCALE)) = solid ? FGCOLOR : BGCOLOR;
 			}
