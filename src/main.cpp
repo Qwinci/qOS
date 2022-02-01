@@ -6,6 +6,8 @@
 Renderer globalRenderer;
 PageFrameAllocator globalAllocator;
 
+extern uintptr_t kernelEnd;
+
 [[noreturn]] void kernelStart(BootInfo bootInfo) {
 	globalRenderer = Renderer {bootInfo.frameBuffer, bootInfo.fontStart};
 	globalRenderer.setColor(0x00FF00);
@@ -14,13 +16,19 @@ PageFrameAllocator globalAllocator;
 
 	PageTableManager pageTableManager;
 
-	for (size_t i = 0; i < globalAllocator.getTotalMemory(); i += 0x1000) {
+	for (size_t i = bootInfo.frameBuffer.address; i < bootInfo.frameBuffer.address +
+	(bootInfo.frameBuffer.width * bootInfo.frameBuffer.height * (bootInfo.frameBuffer.bpp / 8)); i += 0x1000) {
 		pageTableManager.mapMemory(i, i);
 	}
 
-	for (size_t i = bootInfo.frameBuffer.address; i < bootInfo.frameBuffer.address +
-	(bootInfo.frameBuffer.width * bootInfo.frameBuffer.height * bootInfo.frameBuffer.bpp); i += 0x1000) {
+	globalRenderer << kernelEnd << std::endl;
+
+	for (size_t i = 0; i < 0xFFFF; i += 0x1000) {
 		pageTableManager.mapMemory(i, i);
+	}
+
+	for (size_t i = 0; i < kernelEnd; i += 0x1000) {
+		pageTableManager.mapMemory(bootInfo.kernelVirtualAddress + i, bootInfo.kernelPhysicalAddress + i);
 	}
 
 	pageTableManager.refresh();
