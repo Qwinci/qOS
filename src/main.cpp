@@ -18,7 +18,8 @@ PageFrameAllocator globalAllocator;
 		pageTableManager.mapMemory(i, i);
 	}
 
-	for (size_t i = bootInfo.frameBuffer.address; i < bootInfo.frameBuffer.address + (bootInfo.frameBuffer.width * bootInfo.frameBuffer.height * bootInfo.frameBuffer.bpp) + 0x1000; i += 0x1000) {
+	for (size_t i = bootInfo.frameBuffer.address; i < bootInfo.frameBuffer.address +
+	(bootInfo.frameBuffer.width * bootInfo.frameBuffer.height * bootInfo.frameBuffer.bpp); i += 0x1000) {
 		pageTableManager.mapMemory(i, i);
 	}
 

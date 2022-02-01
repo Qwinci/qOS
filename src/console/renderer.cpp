@@ -25,6 +25,16 @@ Renderer& Renderer::operator<<(char c) {
 		else {
 			xOff += 8;
 		}
+
+		if (yOff + 16 > frameBuffer.height) {
+			for (int y = 0; y < yOff; ++y) {
+				for (int x = 0; x < frameBuffer.width; ++x) {
+					*(uint32_t*)(frameBuffer.address + frameBuffer.width * frameBuffer.bpp / 8 * y + frameBuffer.bpp / 8 * x)
+							= *(uint32_t*)(frameBuffer.address + frameBuffer.width * frameBuffer.bpp / 8 * (y + 16) + frameBuffer.bpp / 8 * x);
+				}
+			}
+			yOff -= 16;
+		}
 	}
 	return *this;
 }
