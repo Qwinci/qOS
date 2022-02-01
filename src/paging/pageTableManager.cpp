@@ -4,14 +4,13 @@
 #define F_RW (1 << 1)
 
 void setAddress(uint64_t* entry, uint64_t address) {
-	address &= 0xFFFFFFFFFFFF;
-	*entry &= 0xFF000000000000FF;
+	address &= 0xFFFFFFFFFF;
+	*entry &= 0xFFF0000000000FFF;
 	*entry |= address << 12;
 }
 uint64_t getAddress(uint64_t entry) {
-	return (entry & 0x00FFFFFFFF00) >> 12;
+	return (entry & 0x000FFFFFFFFFF000) >> 12;
 }
-
 void PageTableManager::mapMemory(uint64_t virtualAddress, uint64_t physicalAddress) {
 	virtualAddress >>= 12;
 	uint64_t PT_i = virtualAddress & 0x1FF;

@@ -49,6 +49,9 @@ extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	auto modules = reinterpret_cast<stivale2_struct_tag_modules*>(stivale2_get_tag(stivale2_struct,
 																				   STIVALE2_STRUCT_TAG_MODULES_ID));
 
+	auto kernelBaseAddress = reinterpret_cast<stivale2_struct_tag_kernel_base_address*>
+			(stivale2_get_tag(stivale2_struct, STIVALE2_STRUCT_TAG_KERNEL_BASE_ADDRESS_ID));
+
 	MemoryMap memoryMap {};
 	memoryMap.size = memoryMap_->entries;
 	for (size_t i = 0; i < memoryMap_->entries; ++i) {
@@ -82,7 +85,8 @@ extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	BootInfo bootInfo {
 		{frameBuffer->framebuffer_width, frameBuffer->framebuffer_height,
 		 frameBuffer->framebuffer_bpp, frameBuffer->framebuffer_addr},
-		 fontStart, memoryMap, rsdp};
+		 fontStart, memoryMap, kernelBaseAddress->physical_base_address,
+		 kernelBaseAddress->virtual_base_address, rsdp};
 
 	kernelStart(bootInfo);
 }

@@ -27,5 +27,7 @@ struct BootInfo {
 	FrameBuffer frameBuffer;
 	uintptr_t fontStart;
 	MemoryMap memoryMap;
+	uintptr_t kernelPhysicalAddress;
+	uintptr_t kernelVirtualAddress;
 	void* rsdp;
 };
