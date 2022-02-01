@@ -35,10 +35,10 @@ SECTIONS
 		*(.data .data.*)
 	} :data
 
-	kernelEnd = .;
-
 	.bss : {
 		*(COMMON)
 		*(.bss .bss.*)
 	} :data
+
+	kernelEnd = .;
 }

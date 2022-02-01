@@ -83,10 +83,10 @@ extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	}
 
 	BootInfo bootInfo {
-		{frameBuffer->framebuffer_width, frameBuffer->framebuffer_height,
+			{frameBuffer->framebuffer_width, frameBuffer->framebuffer_height,
 		 frameBuffer->framebuffer_bpp, frameBuffer->framebuffer_addr},
-		 fontStart, memoryMap, kernelBaseAddress->physical_base_address,
-		 kernelBaseAddress->virtual_base_address, rsdp};
+			fontStart, memoryMap, kernelBaseAddress->physical_base_address,
+			kernelBaseAddress->virtual_base_address, reinterpret_cast<void*>(rsdp->rsdp)};
 
 	kernelStart(bootInfo);
 }
