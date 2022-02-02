@@ -26,6 +26,7 @@ struct MemoryMap {
 struct BootInfo {
 	FrameBuffer frameBuffer;
 	uintptr_t fontStart;
+	uint64_t fontSize;
 	MemoryMap memoryMap;
 	uintptr_t kernelPhysicalAddress;
 	uintptr_t kernelVirtualAddress;

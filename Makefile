@@ -2,7 +2,7 @@ CXX=clang++
 LD=ld.lld
 AS=nasm
 
-CXXFLAGS=-std=c++20 -O2 -Wall -Isrc
+CXXFLAGS=-std=c++20 -O2 -Wall -Isrc -g
 CXXFLAGS+=-ffreestanding -fno-stack-protector -fno-pic -mabi=sysv -mno-80387 -mno-mmx -mgeneral-regs-only
 CXXFLAGS+=-mno-3dnow -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -fno-exceptions -fno-rtti
 LDFLAGS=-z max-page-size=0x1000 -T kernel.ld -nostdlib -static
