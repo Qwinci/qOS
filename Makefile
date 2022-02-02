@@ -21,7 +21,7 @@ build/kernel/%.o: src/%.cpp $(KERNEL_HEADERS)
 	@ echo COMPILING CXX OBJECT $@
 	@ $(CXX) $(CXXFLAGS) -c $< -o $@
 
-build/kernel/%.o: src/%.asm
+build/kernel/asm/%.o: src/%.asm
 	@ mkdir -p $(@D)
 	@ echo COMPILING ASM OBJECT $@
 	@ $(AS) $(ASFLAGS) $< -o $@

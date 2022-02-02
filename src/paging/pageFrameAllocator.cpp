@@ -2,6 +2,7 @@
 #include "bitmap.hpp"
 #include "../console/renderer.hpp"
 #include <cstddef>
+#include "pageTableManager.hpp"
 
 PageFrameAllocator::PageFrameAllocator(MemoryMap &memoryMap) {
 	size_t bestSize = 0;
@@ -19,6 +20,7 @@ PageFrameAllocator::PageFrameAllocator(MemoryMap &memoryMap) {
 
 	bitmapSize = totalMemory / 0x1000 + 1;
 	bitmap = Bitmap {bestEntryAddress, totalMemory / 0x1000 + 1};
+	bitmapAddress = bestEntryAddress;
 
 	lockPages(bestEntryAddress, bitmapSize / 64);
 
@@ -35,14 +37,14 @@ void *PageFrameAllocator::allocatePage() {
 	for (size_t i = 0; i < bitmapSize; ++i) {
 		if (!bitmap[i]) {
 			bitmap[i] = true;
-			return reinterpret_cast<void*>(i * 0x1000);
+			return reinterpret_cast<void*>(i * 0x1000 + offset);
 		}
 	}
 	return nullptr;
 }
 
 void PageFrameAllocator::freePage(void *address) {
-	auto addr = reinterpret_cast<uintptr_t>(address);
+	auto addr = reinterpret_cast<uintptr_t>(address) - offset;
 	bitmap[addr / 0x1000] = false;
 }
 
@@ -55,4 +57,9 @@ void PageFrameAllocator::lockPages(uintptr_t address, size_t count) {
 	for (size_t i = 0; i < count; ++i) {
 		lockPage(address + i * 0x1000);
 	}
+}
+
+void PageFrameAllocator::changeMapping() {
+	bitmap.changeBufferAddress(0xffff800000000000 + bitmapAddress);
+	offset = 0xffff800000000000;
 }

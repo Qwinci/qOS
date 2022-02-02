@@ -3,6 +3,8 @@
 #include "paging/pageFrameAllocator.hpp"
 #include "paging/pageTableManager.hpp"
 #include "acpi/acpi.hpp"
+#include "gdt/gdt.hpp"
+#include "interrupts/idt.hpp"
 
 Renderer globalRenderer;
 PageFrameAllocator globalAllocator;
@@ -18,10 +20,6 @@ PageTableManager globalPageTableManager;
 	globalAllocator = PageFrameAllocator {bootInfo.memoryMap};
 
 	globalPageTableManager = PageTableManager();
-
-	auto mcfg = findTable(static_cast<RSDP*>(bootInfo.rsdp), "MCFG");
-
-	globalRenderer << Mode::Hex << bootInfo.frameBuffer.address << std::endl;
 
 	for (size_t i = 0; i < bootInfo.memoryMap.size; ++i) {
 		for (size_t i2 = 0; i2 < bootInfo.memoryMap.entries[i].size; i2 += 0x1000) {
@@ -42,11 +40,15 @@ PageTableManager globalPageTableManager;
 		globalPageTableManager.mapMemory(bootInfo.kernelVirtualAddress + i, bootInfo.kernelPhysicalAddress + i);
 	}
 
-	globalRenderer << "Hi!" << std::endl;
-
+	globalAllocator.changeMapping();
 	globalPageTableManager.refresh();
+	globalRenderer << "Kernel mapping changed" << std::endl;
 
-	globalRenderer << "Hi from new page table!" << std::endl;
+	GDTDescriptor descriptor {sizeof(GDT) - 1, reinterpret_cast<uint64_t>(&gdt)};
+	loadGDT(reinterpret_cast<GDT*>(&descriptor));
+	initializeInterrupts();
+
+	auto mcfg = findTable(static_cast<RSDP*>((void*)(bootInfo.rsdp)), "MCFG");
 
 	while (true) {
 		asm("hlt");

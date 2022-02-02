@@ -16,6 +16,10 @@ constexpr bool Bitmap::operator[](size_t index) const {
 	return buffer[index / 64] & 1 << (index % 64);
 }
 
+void Bitmap::changeBufferAddress(uintptr_t address) {
+	buffer = reinterpret_cast<uint64_t*>(address);
+}
+
 Bitmap::reference &Bitmap::reference::operator=(bool value) {
 	if (value) {
 		*entry |= 1 << index;

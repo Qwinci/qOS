@@ -15,7 +15,6 @@ public:
 	private:
 		uint64_t* entry;
 		size_t index;
-
 		friend class Bitmap;
 	};
 
@@ -23,6 +22,8 @@ public:
 	Bitmap() = default;
 	constexpr bool operator[](size_t index) const;
 	reference operator[](size_t index);
+
+	void changeBufferAddress(uintptr_t address);
 
 private:
 	uint64_t* buffer;
