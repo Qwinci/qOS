@@ -22,13 +22,19 @@ PageTableManager globalPageTableManager;
 	globalPageTableManager = PageTableManager();
 
 	for (size_t i = 0; i < bootInfo.memoryMap.size; ++i) {
-		for (size_t i2 = 0; i2 < bootInfo.memoryMap.entries[i].size; i2 += 0x1000) {
-			uintptr_t address = bootInfo.memoryMap.entries[i].address;
-			if (address % 0x1000 != 0) {
-				address = (address & 0xFFFFFFFFFFFFF000) + 0x1000;
+		uintptr_t address = bootInfo.memoryMap.entries[i].address;
+		for (size_t i2 = 0; i2 < bootInfo.memoryMap.entries[i].size;) {
+			if (address & 0xFFF) {
+				globalRenderer << "Page aligning address " << Mode::Hex << "0x" << address << "..." << Mode::Normal << std::endl;
+				address &= 0xFFFFFFFFFFFFF000;
+				globalPageTableManager.mapMemory(0xffff800000000000 +
+				address + i2, address + i2);
 			}
-			globalPageTableManager.mapMemory(0xffff800000000000 +
-			address + i2, address + i2);
+			else {
+				globalPageTableManager.mapMemory(0xffff800000000000 +
+				address + i2, address + i2);
+				i2 += 0x1000;
+			}
 		}
 	}
 
@@ -36,8 +42,18 @@ PageTableManager globalPageTableManager;
 		globalPageTableManager.mapMemory(0xffff800000000000 + i, i);
 	}
 
-	for (size_t i = 0; i < reinterpret_cast<uintptr_t>(kernelEnd) - bootInfo.kernelVirtualAddress; i += 0x1000) {
-		globalPageTableManager.mapMemory(bootInfo.kernelVirtualAddress + i, bootInfo.kernelPhysicalAddress + i);
+	uint64_t virtualAddress = bootInfo.kernelVirtualAddress;
+	uint64_t physicalAddress = bootInfo.kernelPhysicalAddress;
+	for (size_t i = 0; i < reinterpret_cast<uintptr_t>(kernelEnd) - bootInfo.kernelVirtualAddress;) {
+		if (physicalAddress & 0xFFF) {
+			physicalAddress &= 0xFFFFFFFFFFFFF000;
+			virtualAddress &= 0xFFFFFFFFFFFFF000;
+			globalPageTableManager.mapMemory(virtualAddress + i, physicalAddress + i);
+		}
+		else {
+			globalPageTableManager.mapMemory(virtualAddress + i, physicalAddress + i);
+			i += 0x1000;
+		}
 	}
 
 	globalAllocator.changeMapping();

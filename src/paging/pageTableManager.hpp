@@ -10,6 +10,7 @@ public:
 	}
 
 	void mapMemory(uint64_t virtualAddress, uint64_t physicalAddress);
+	void mapMemory2MB(uint64_t virtualAddress, uint64_t physicalAddress);
 	void refresh();
 
 private:
