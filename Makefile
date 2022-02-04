@@ -31,7 +31,7 @@ build/qos: $(KERNEL_CXX_OBJ) $(KERNEL_ASM_OBJ)
 	@ $(LD) $(LDFLAGS) $^ -o $@
 
 run: all
-	@ qemu-system-x86_64 -boot d -cdrom build/image.iso -m 2G -machine q35 -cpu qemu64
+	@ qemu-system-x86_64 -boot d -cdrom build/image.iso -m 2G -machine q35 -cpu qemu64 -usb -device usb-kbd -smp 2
 
 install: build/qos
 #	@ if [ -d "limine" ]; then \

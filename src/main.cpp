@@ -5,6 +5,7 @@
 #include "acpi/acpi.hpp"
 #include "gdt/gdt.hpp"
 #include "interrupts/idt.hpp"
+#include "pci/pci.hpp"
 
 Renderer globalRenderer;
 PageFrameAllocator globalAllocator;
@@ -59,12 +60,18 @@ PageTableManager globalPageTableManager;
 	globalAllocator.changeMapping();
 	globalPageTableManager.refresh();
 	globalRenderer << "Kernel mapping changed" << std::endl;
+	globalPageTableManager.changeOffset();
 
 	GDTDescriptor descriptor {sizeof(GDT) - 1, reinterpret_cast<uint64_t>(&gdt)};
 	loadGDT(reinterpret_cast<GDT*>(&descriptor));
 	initializeInterrupts();
 
-	auto mcfg = findTable(static_cast<RSDP*>((void*)(bootInfo.rsdp)), "MCFG");
+	int* test = (int*) 0xFF;
+	*test = 1;
+
+	auto mcfg = findTable(static_cast<RSDP*>(bootInfo.rsdp), "MCFG");
+	enumeratePCI(static_cast<MCFG*>(mcfg));
+	globalRenderer << "PCI enumeration done" << std::endl;
 
 	while (true) {
 		asm("hlt");
