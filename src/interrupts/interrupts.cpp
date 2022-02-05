@@ -2,6 +2,13 @@
 #include "../console/renderer.hpp"
 #include <cstdint>
 
+__attribute__((interrupt)) void unhandledInterruptHandler(interrupt_frame* frame) {
+	globalRenderer << "Unhandled interrupt" << std::endl;
+	while (true) {
+		asm("hlt");
+	}
+}
+
 __attribute__((interrupt)) void pageFaultHandler(interrupt_frame* frame, uint64_t error) {
 	globalRenderer.setColor(0xFF0000);
 	uint64_t address;

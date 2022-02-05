@@ -66,6 +66,21 @@ PageTableManager globalPageTableManager;
 	loadGDT(reinterpret_cast<GDT*>(&descriptor));
 	initializeInterrupts();
 
+	GDTDescriptor desc {};
+	asm("sgdt %0" : "=m"(desc));
+	for (int i = 0; i < 6; ++i) {
+		globalRenderer << Mode::Hex << ((uint64_t*) desc.offset)[i] << std::endl;
+	}
+	globalRenderer << Mode::Normal;
+
+	/*IDTR idtr {};
+	globalRenderer << "Idtr: " << std::endl;
+	asm("sidt %0" : "=m"(idtr));
+	for (int i = 0; i < 62; i += 2) {
+		globalRenderer << Mode::Hex << ((uint64_t*) idtr.offset)[i] << ((uint64_t*) idtr.offset)[i + 1] << std::endl;
+	}
+	globalRenderer << Mode::Normal;*/
+
 	int* test = (int*) 0xFF;
 	*test = 1;
 

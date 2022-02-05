@@ -5,6 +5,7 @@ struct FrameBuffer {
 	uint32_t width;
 	uint32_t height;
 	uint32_t bpp;
+	uint16_t pitch;
 	uintptr_t address;
 };
 enum class MemoryType {

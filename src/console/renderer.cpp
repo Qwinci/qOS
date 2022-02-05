@@ -151,7 +151,7 @@ void Renderer::putChar(unsigned char character, int charX, int charY, uint32_t f
 		uint8_t currentLine = reinterpret_cast<unsigned char*>(fontStart + fontHeader->headerSize)[index + y];
 		for (uint32_t x = 0; x < fontHeader->width; ++x) {
 			uint8_t currentBit = (currentLine >> (8 - x)) & 1;
-			*(uint32_t*)(frameBuffer.address + frameBuffer.width * frameBuffer.bpp / 8 * (y + charY) + frameBuffer.bpp / 8 * (x + charX))
+			*(uint32_t*)(frameBuffer.address + frameBuffer.pitch * (y + charY) + frameBuffer.bpp / 8 * (x + charX))
 				= currentBit ? fg : bg;
 		}
 	}
