@@ -2,6 +2,10 @@
 #include "../console/renderer.hpp"
 #include <cstdint>
 
+__attribute__((interrupt)) void keyboardInterruptHandler(interrupt_frame* frame) {
+	globalRenderer << "keyboard xd" << std::endl;
+}
+
 __attribute__((interrupt)) void unhandledInterruptHandler(interrupt_frame* frame) {
 	globalRenderer << "Unhandled interrupt" << std::endl;
 	while (true) {
@@ -41,4 +45,9 @@ __attribute__((interrupt)) void gpFaultHandler(interrupt_frame* frame) {
 	while (true) {
 		asm("hlt");
 	}
+}
+
+__attribute__((interrupt)) void doubleFaulthandler(interrupt_frame* frame) {
+	globalRenderer << "Double fault" << std::endl;
+	while (true) asm("hlt");
 }

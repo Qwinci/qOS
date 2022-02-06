@@ -13,3 +13,5 @@ struct interrupt_frame
 __attribute__((interrupt)) void pageFaultHandler(interrupt_frame* frame, uint64_t error);
 __attribute__((interrupt)) void gpFaultHandler(interrupt_frame* frame);
 __attribute__((interrupt)) void unhandledInterruptHandler(interrupt_frame* frame);
+__attribute__((interrupt)) void keyboardInterruptHandler(interrupt_frame* frame);
+__attribute__((interrupt)) void doubleFaulthandler(interrupt_frame* frame);
