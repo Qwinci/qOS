@@ -14,4 +14,4 @@ loadGDT:
 	mov rax, 0x08
 	push rax
 	push rdi
-	retq
+	retfq

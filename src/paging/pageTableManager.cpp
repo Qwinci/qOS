@@ -11,7 +11,7 @@ void PageTableManager::mapMemory(uint64_t virtualAddress, uint64_t physicalAddre
 	virtualAddress >>= 9;
 	uint64_t PML4_i = virtualAddress & 0x1FF;
 
-	flags = flags | PageFlag::Present | PageFlag::RW;
+	flags = flags | PageFlag::Present;
 
 	uint64_t* PDP;
 	if (((uint64_t*)((uintptr_t) PML4 + offset))[PML4_i] & PageFlag::Present) {
@@ -56,4 +56,41 @@ void PageTableManager::refreshPage(uint64_t address) {
 
 void PageTableManager::changeOffset() {
 	offset = 0xffff800000000000;
+}
+
+void PageTableManager::unmapMemory(uint64_t virtualAddress) {
+	virtualAddress >>= 12;
+	uint64_t PT_i = virtualAddress & 0x1FF;
+	virtualAddress >>= 9;
+	uint64_t PD_i = virtualAddress & 0x1FF;
+	virtualAddress >>= 9;
+	uint64_t PDP_i = virtualAddress & 0x1FF;
+	virtualAddress >>= 9;
+	uint64_t PML4_i = virtualAddress & 0x1FF;
+
+	uint64_t* PDP;
+	if (((uint64_t*)((uintptr_t) PML4 + offset))[PML4_i] & PageFlag::Present) {
+		PDP = reinterpret_cast<uint64_t*>(((uint64_t*)((uintptr_t) PML4 + offset))[PML4_i] & 0xFFFFFFFFFF000);
+	}
+	else {
+		return;
+	}
+
+	uint64_t* PD;
+	if (((uint64_t*)((uintptr_t) PDP + offset))[PDP_i] & PageFlag::Present) {
+		PD = reinterpret_cast<uint64_t*>((((uint64_t*)((uintptr_t) PDP + offset))[PDP_i] & 0xFFFFFFFFFF000));
+	}
+	else {
+		return;
+	}
+
+	uint64_t* PT;
+	if (((uint64_t*)((uintptr_t) PD + offset))[PD_i] & PageFlag::Present) {
+		PT = reinterpret_cast<uint64_t*>((((uint64_t*)((uintptr_t) PD + offset))[PD_i] & 0xFFFFFFFFFF000));
+	}
+	else {
+		return;
+	}
+
+	((uint64_t*)((uintptr_t) PT + offset))[PT_i] &= ~static_cast<uint8_t>(PageFlag::Present);
 }

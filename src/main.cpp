@@ -2,11 +2,10 @@
 #include "console/renderer.hpp"
 #include "paging/pageFrameAllocator.hpp"
 #include "paging/pageTableManager.hpp"
-#include "acpi/acpi.hpp"
 #include "gdt/gdt.hpp"
 #include "interrupts/idt.hpp"
-#include "pci/pci.hpp"
-#include "interrupts/apic.hpp"
+#include "interrupts/pic.hpp"
+#include "utils/io.hpp"
 
 Renderer globalRenderer;
 PageFrameAllocator globalAllocator;
@@ -14,6 +13,9 @@ PageFrameAllocator globalAllocator;
 extern char kernelEnd[];
 
 PageTableManager globalPageTableManager;
+
+#define PIC1_DATA 0x21
+#define PIC2_DATA 0xA1
 
 [[noreturn]] void kernelStart(BootInfo bootInfo) {
 	globalRenderer = Renderer {bootInfo.frameBuffer, bootInfo.fontStart};
@@ -27,21 +29,32 @@ PageTableManager globalPageTableManager;
 		uintptr_t address = bootInfo.memoryMap.entries[i].address;
 		for (size_t i2 = 0; i2 < bootInfo.memoryMap.entries[i].size;) {
 			if (address & 0xFFF) {
-				globalRenderer << "Page aligning address " << Mode::Hex << "0x" << address << "..." << Mode::Normal << std::endl;
 				address &= 0xFFFFFFFFFFFFF000;
-				globalPageTableManager.mapMemory(0xffff800000000000 +
-				address + i2, address + i2);
+				if (bootInfo.memoryMap.entries[i].type != MemoryType::FrameBuffer) {
+					globalPageTableManager.mapMemory(0xffff800000000000 +
+					                                 address + i2, address + i2, PageFlag::None);
+				}
+				else {
+					globalPageTableManager.mapMemory(0xffff800000000000 +
+					                                 address + i2, address + i2, PageFlag::RW);
+				}
 			}
 			else {
-				globalPageTableManager.mapMemory(0xffff800000000000 +
-				address + i2, address + i2);
+				if (bootInfo.memoryMap.entries[i].type != MemoryType::FrameBuffer) {
+					globalPageTableManager.mapMemory(0xffff800000000000 +
+					                                 address + i2, address + i2, PageFlag::None);
+				}
+				else {
+					globalPageTableManager.mapMemory(0xffff800000000000 +
+					                                 address + i2, address + i2, PageFlag::RW);
+				}
 				i2 += 0x1000;
 			}
 		}
 	}
 
 	for (size_t i = 0; i < 0x100000000; i += 0x1000) {
-		globalPageTableManager.mapMemory(0xffff800000000000 + i, i);
+		globalPageTableManager.mapMemory(0xffff800000000000 + i, i, PageFlag::None);
 	}
 
 	uint64_t virtualAddress = bootInfo.kernelVirtualAddress;
@@ -50,10 +63,10 @@ PageTableManager globalPageTableManager;
 		if (physicalAddress & 0xFFF) {
 			physicalAddress &= 0xFFFFFFFFFFFFF000;
 			virtualAddress &= 0xFFFFFFFFFFFFF000;
-			globalPageTableManager.mapMemory(virtualAddress + i, physicalAddress + i);
+			globalPageTableManager.mapMemory(virtualAddress + i, physicalAddress + i, PageFlag::None);
 		}
 		else {
-			globalPageTableManager.mapMemory(virtualAddress + i, physicalAddress + i);
+			globalPageTableManager.mapMemory(virtualAddress + i, physicalAddress + i, PageFlag::None);
 			i += 0x1000;
 		}
 	}
@@ -67,12 +80,18 @@ PageTableManager globalPageTableManager;
 	loadGDT(reinterpret_cast<GDT*>(&descriptor));
 	initializeInterrupts();
 
-	auto madt = findTable(static_cast<RSDP*>(bootInfo.rsdp), "APIC");
-	initializeAPIC(static_cast<MADT*>(madt));
+	//auto madt = findTable(static_cast<RSDP*>(bootInfo.rsdp), "APIC");
+	//initializeAPIC(static_cast<MADT*>(madt));
 
-	auto mcfg = findTable(static_cast<RSDP*>(bootInfo.rsdp), "MCFG");
-	enumeratePCI(static_cast<MCFG*>(mcfg));
-	globalRenderer << "PCI enumeration done" << std::endl;
+	asm("cli");
+	initializePIC();
+	out1(PIC1_DATA, 0b11111101);
+	out1(PIC2_DATA, 0b11111111);
+	asm("sti");
+
+	//auto mcfg = findTable(static_cast<RSDP*>(bootInfo.rsdp), "MCFG");
+	//enumeratePCI(static_cast<MCFG*>(mcfg));
+	//globalRenderer << "PCI enumeration done" << std::endl;
 
 	while (true) {
 		asm("hlt");

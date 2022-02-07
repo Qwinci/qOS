@@ -35,6 +35,7 @@ public:
 
 private:
 	void putChar(unsigned char character, int charX, int charY, uint32_t fg, uint32_t bg) const;
+	void scroll();
 	Renderer& printNumber(uint64_t number);
 	Renderer& printNumber(int64_t number);
 

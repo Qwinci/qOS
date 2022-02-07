@@ -2,13 +2,31 @@
 #include "font.hpp"
 #include <cstddef>
 
+void Renderer::scroll() {
+	for (int y = 0; y < frameBuffer.height - 16; ++y) {
+		for (int x = 0; x < frameBuffer.width; ++x) {
+			*(uint32_t*)(frameBuffer.address + frameBuffer.pitch * y + frameBuffer.bpp / 8 * x)
+					= *(uint32_t*)(frameBuffer.address + frameBuffer.pitch * (y + 16) + frameBuffer.bpp / 8 * x);
+		}
+	}
+	yOff -= 16;
+}
+
 Renderer& Renderer::operator<<(char c) {
 	if (c == '\n') {
+		if (yOff + 16 > frameBuffer.height) {
+			scroll();
+		}
+
 		xOff = 0;
 		yOff += 16;
 	}
 	else if (c == '\t') {
 		if (xOff + 4 * 8 > frameBuffer.width) {
+			if (yOff + 16 > frameBuffer.height) {
+				scroll();
+			}
+
 			xOff = 0;
 			yOff += 16;
 		}
@@ -17,23 +35,21 @@ Renderer& Renderer::operator<<(char c) {
 		}
 	}
 	else {
+		if (yOff + 16 > frameBuffer.height) {
+			scroll();
+		}
 		putChar(c, xOff, yOff, fgColor, bgColor);
 		if (xOff + 8 >= frameBuffer.width) {
 			xOff = 0;
+
+			if (yOff + 16 > frameBuffer.height) {
+				scroll();
+			}
+
 			yOff += 16;
 		}
 		else {
 			xOff += 8;
-		}
-
-		if (yOff + 16 > frameBuffer.height) {
-			for (int y = 0; y < yOff; ++y) {
-				for (int x = 0; x < frameBuffer.width; ++x) {
-					*(uint32_t*)(frameBuffer.address + frameBuffer.width * frameBuffer.bpp / 8 * y + frameBuffer.bpp / 8 * x)
-							= *(uint32_t*)(frameBuffer.address + frameBuffer.width * frameBuffer.bpp / 8 * (y + 16) + frameBuffer.bpp / 8 * x);
-				}
-			}
-			yOff -= 16;
 		}
 	}
 	return *this;
@@ -168,7 +184,7 @@ void Renderer::setBGColor(uint32_t color) {
 void Renderer::clear(uint32_t clearColor) {
 	for (int y = 0; y < frameBuffer.height; ++y) {
 		for (int x = 0; x < frameBuffer.width; ++x) {
-			*(uint32_t*)(frameBuffer.address + frameBuffer.width * frameBuffer.bpp / 8 * y + frameBuffer.bpp / 8 * x)
+			*(uint32_t*)(frameBuffer.address + frameBuffer.pitch * y + frameBuffer.bpp / 8 * x)
 			= clearColor;
 		}
 	}

@@ -4,7 +4,7 @@
 static inline void out1(uint16_t port, uint8_t value) {
 	asm volatile("outb %0, %1" : : "a"(value), "Nd"(port));
 }
-static inline uint8_t in1(uint16_t port) {
+__attribute__((no_caller_saved_registers)) static inline uint8_t in1(uint16_t port) {
 	uint8_t value;
 	asm volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
 	return value;

@@ -30,7 +30,8 @@ public:
 	}
 
 	void mapMemory(uint64_t virtualAddress, uint64_t physicalAddress,
-				   PageFlag flags = PageFlag::None);
+				   PageFlag flags = PageFlag::RW);
+	void unmapMemory(uint64_t virtualAddress);
 	void refresh();
 	void refreshPage(uint64_t address);
 	void changeOffset();
