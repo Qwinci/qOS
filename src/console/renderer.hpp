@@ -23,7 +23,7 @@ public:
 
 	Renderer& operator<<(char c);
 	Renderer& operator<<(const char* string);
-	Renderer& operator<<(uint8_t number);
+	Renderer& operator<<(unsigned char c);
 	Renderer& operator<<(uint16_t number);
 	Renderer& operator<<(uint32_t number);
 	Renderer& operator<<(uint64_t number);
