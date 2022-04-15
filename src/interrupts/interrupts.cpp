@@ -28,6 +28,7 @@ __attribute__((interrupt)) void nmiHandler(interrupt_frame* frame) {
 
 __attribute__((interrupt)) void breakpointHandler(interrupt_frame* frame) {
 	globalRenderer << "breakpoint exception" << std::endl;
+	globalRenderer << "IP: 0x" << 0xffffffff80000000 + frame->ip << std::endl;
 
 	while (true) {
 		asm("hlt");

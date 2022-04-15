@@ -3,6 +3,8 @@
 #include "interrupts.hpp"
 #include "../utils/memory.hpp"
 #include "drivers/ps2/keyboard.hpp"
+#include "gdt/gdt.hpp"
+#include "scheduling/timer.hpp"
 
 #define INTERRUPT_GATE 0b10001110
 #define TRAP_GATE 0b10001111
@@ -19,6 +21,9 @@ void registerInterrupt(uint8_t typeAttributes, uint8_t index, uint64_t handler) 
 }
 
 void initializeInterrupts() {
+	GDTDescriptor descriptor {sizeof(GDT) - 1, reinterpret_cast<uint64_t>(&gdt)};
+	loadGDT(reinterpret_cast<GDT*>(&descriptor));
+
 	idtr.size = 0xFFF;
 	idtr.offset = reinterpret_cast<uint64_t>(globalAllocator.allocatePage());
 	memset(reinterpret_cast<void*>(idtr.offset), 0, 0x1000);
@@ -47,6 +52,7 @@ void initializeInterrupts() {
 	registerInterrupt(INTERRUPT_GATE, 0x1D, reinterpret_cast<uint64_t>(&vmmCommunicationExceptionHandler));
 	registerInterrupt(INTERRUPT_GATE, 0x1E, reinterpret_cast<uint64_t>(&securityExceptionHandler));
 
+	registerInterrupt(INTERRUPT_GATE, 0x20, reinterpret_cast<uint64_t>(&tick));
 	registerInterrupt(INTERRUPT_GATE, 0x21, reinterpret_cast<uint64_t>(&keyboardInterruptHandler));
 
 	asm("lidt %0" : : "m"(idtr));

@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "pageFrameAllocator.hpp"
 #include "../utils/memory.hpp"
+#include "console/renderer.hpp"
 
 enum class PageFlag {
 	None = 0,
@@ -27,10 +28,12 @@ class PageTableManager {
 public:
 	PageTableManager() : PML4{static_cast<uint64_t*>(globalAllocator.allocatePage())} {
 		memset(PML4, 0, 0x1000);
+		memcpy((void*) 0x2000, &PML4, sizeof(uintptr_t));
+		globalRenderer << Mode::Hex << (uintptr_t) PML4 << Mode::Normal << std::endl;
 	}
 
 	void mapMemory(uint64_t virtualAddress, uint64_t physicalAddress,
-				   PageFlag flags = PageFlag::RW);
+				   PageFlag flags = PageFlag::None);
 	void unmapMemory(uint64_t virtualAddress);
 	void refresh();
 	void refreshPage(uint64_t address);

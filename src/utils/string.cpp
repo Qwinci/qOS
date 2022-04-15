@@ -1,15 +1,17 @@
 #include "string.hpp"
 
-bool strcmp(const char* str1, const char* str2) {
-	for (int i = 0; str1[i] != 0 && str2[i] != 0; ++i) {
-		if (str1[i] != str2[i]) return false;
+int strcmp(const char* lhs, const char* rhs) {
+	for (size_t i = 0; lhs[i] != 0 && rhs[i] != 0; ++i) {
+		if (lhs[i] < rhs[i]) return -1;
+		else if (lhs[i] > rhs[i]) return 1;
 	}
-	return true;
+	return 0;
 }
 
-bool strncmp(const char* str1, const char* str2, size_t length) {
-	for (int i = 0; str1[i] != 0 && str2[i] != 0 && i < length; ++i) {
-		if (str1[i] != str2[i]) return false;
+int strncmp(const char* lhs, const char* rhs, size_t length) {
+	for (size_t i = 0; lhs[i] != 0 && rhs[i] != 0 && i < length; ++i) {
+		if (lhs[i] < rhs[i]) return -1;
+		else if (lhs[i] > rhs[i]) return 1;
 	}
-	return true;
+	return 0;
 }

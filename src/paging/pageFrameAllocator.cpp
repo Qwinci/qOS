@@ -43,9 +43,40 @@ void *PageFrameAllocator::allocatePage() {
 	return nullptr;
 }
 
+void *PageFrameAllocator::allocatePages(size_t count) {
+	size_t foundCount = 0;
+	size_t start = 0;
+	for (size_t i = 0; i < bitmapSize; ++i) {
+		if (!bitmap[i]) {
+			start = i;
+			foundCount += 1;
+		}
+		else {
+			start = 0;
+			foundCount = 0;
+		}
+	}
+
+	if (start != 0 && foundCount == count) {
+		for (size_t i = 0; i < count; ++i) {
+			bitmap[start + i] = true;
+		}
+		return reinterpret_cast<void*>(start * 0x1000 + offset);
+	}
+	else {
+		return nullptr;
+	}
+}
+
 void PageFrameAllocator::freePage(void *address) {
 	auto addr = reinterpret_cast<uintptr_t>(address) - offset;
 	bitmap[addr / 0x1000] = false;
+}
+
+void PageFrameAllocator::freePages(void *address, size_t count) {
+	for (size_t i = 0; i < count; ++i) {
+		freePage(reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(address) + i * 0x1000));
+	}
 }
 
 void PageFrameAllocator::lockPage(uintptr_t address) {

@@ -9,10 +9,14 @@ PHDRS
 	text    PT_LOAD     FLAGS((1 << 0) | (1 << 2));
 	rodata  PT_LOAD     FLAGS((1 << 2));
 	data    PT_LOAD     FLAGS((1 << 1) | (1 << 2));
+	bruh    PT_LOAD     FLAGS((1 << 0) | (1 << 2));
 }
 
 SECTIONS
 {
+	.bruh : {
+		*(.bruh)
+	} :bruh
 	. = 0xffffffff80000000;
 
 	.text : {

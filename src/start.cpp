@@ -52,6 +52,9 @@ extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	auto kernelBaseAddress = reinterpret_cast<stivale2_struct_tag_kernel_base_address*>
 			(stivale2_get_tag(stivale2_struct, STIVALE2_STRUCT_TAG_KERNEL_BASE_ADDRESS_ID));
 
+	auto kernelFileAddress = reinterpret_cast<stivale2_struct_tag_kernel_file*>
+		(stivale2_get_tag(stivale2_struct, STIVALE2_STRUCT_TAG_KERNEL_FILE_ID));
+
 	MemoryMap memoryMap {};
 	memoryMap.size = memoryMap_->entries;
 	for (size_t i = 0; i < memoryMap_->entries; ++i) {
@@ -78,7 +81,7 @@ extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	uintptr_t fontStart = 0;
 	uint64_t fontSize = 0;
 	for (int i = 0; i < modules->module_count; ++i) {
-		if (strcmp(modules->modules[i].string, "Uni2-VGA16.psf")) {
+		if (strcmp(modules->modules[i].string, "Uni2-VGA16.psf") == 0) {
 			fontStart = modules->modules[i].begin;
 			fontSize = modules->modules[i].end - modules->modules[i].begin;
 		}
@@ -87,7 +90,8 @@ extern "C" __attribute__((used)) void start(stivale2_struct* stivale2_struct) {
 	BootInfo bootInfo {
 			{frameBuffer->framebuffer_width, frameBuffer->framebuffer_height,
 		 frameBuffer->framebuffer_bpp, frameBuffer->framebuffer_pitch, frameBuffer->framebuffer_addr},
-			fontStart, fontSize,memoryMap, kernelBaseAddress->physical_base_address,
+			fontStart, fontSize,memoryMap, kernelFileAddress->kernel_file,
+			kernelBaseAddress->physical_base_address,
 			kernelBaseAddress->virtual_base_address, reinterpret_cast<void*>(rsdp->rsdp)};
 
 	kernelStart(bootInfo);

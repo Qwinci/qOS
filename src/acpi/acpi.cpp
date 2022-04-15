@@ -10,7 +10,7 @@ void* findTable(RSDP* rsdp, const char* signature) {
 		for (unsigned int i = 0; i < entries; ++i) {
 			auto* header = reinterpret_cast<SDTHeader*>(0xffff800000000000 + rsdt->addresses[i]);
 			globalRenderer << header->signature[0] << header->signature[1] << header->signature[2] << header->signature[3] << std::endl;
-			if (strncmp(header->signature, signature, 4)) {
+			if (strncmp(header->signature, signature, 4) == 0) {
 				return header;
 			}
 		}
@@ -32,7 +32,7 @@ void* findTable(RSDP* rsdp, const char* signature) {
 		for (unsigned int i = 0; i < entries; ++i) {
 			auto* header = reinterpret_cast<SDTHeader*>(0xffff800000000000 + rsdt->addresses[i]);
 			globalRenderer << header->signature[0] << header->signature[1] << header->signature[2] << header->signature[3] << std::endl;
-			if (strncmp(header->signature, signature, 4)) {
+			if (strncmp(header->signature, signature, 4) == 0) {
 				return header;
 			}
 		}

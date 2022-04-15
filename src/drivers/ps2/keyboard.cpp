@@ -18,3 +18,9 @@ __attribute__((interrupt)) void keyboardInterruptHandler(struct interrupt_frame*
 	}
 	endInterrupt(1);
 }
+
+void initializeKeyboard() {
+	asm("cli");
+	clearMask(1);
+	asm("sti");
+}

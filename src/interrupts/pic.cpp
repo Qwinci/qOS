@@ -49,6 +49,7 @@ __attribute__((no_caller_saved_registers)) void endInterrupt(uint8_t irq) {
 }
 
 void initializePIC() {
+	asm("cli");
 	uint8_t pic1Mask = in1(PIC1_DATA);
 	uint8_t pic2Mask = in1(PIC2_DATA);
 
@@ -72,4 +73,5 @@ void initializePIC() {
 
 	out1(PIC1_DATA, pic1Mask);
 	out1(PIC2_DATA, pic2Mask);
+	asm("sti");
 }

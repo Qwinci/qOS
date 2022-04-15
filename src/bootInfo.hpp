@@ -29,6 +29,7 @@ struct BootInfo {
 	uintptr_t fontStart;
 	uint64_t fontSize;
 	MemoryMap memoryMap;
+	uintptr_t kernelFile;
 	uintptr_t kernelPhysicalAddress;
 	uintptr_t kernelVirtualAddress;
 	void* rsdp;

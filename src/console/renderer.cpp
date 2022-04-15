@@ -2,6 +2,8 @@
 #include "font.hpp"
 #include <cstddef>
 
+Renderer globalRenderer;
+
 void Renderer::scroll() {
 	for (uint32_t y = 0; y < frameBuffer.height - 16; ++y) {
 		for (uint32_t x = 0; x < frameBuffer.width; ++x) {
@@ -202,47 +204,8 @@ Renderer &Renderer::operator<<(Mode newMode) {
 	return *this;
 }
 
-Renderer &Renderer::operator<<(unsigned char c) {
-	if (c == '\n') {
-		if (yOff + 16 > frameBuffer.height) {
-			scroll();
-		}
-
-		xOff = 0;
-		yOff += 16;
-	}
-	else if (c == '\t') {
-		if (xOff + 4 * 8 > frameBuffer.width) {
-			if (yOff + 16 > frameBuffer.height) {
-				scroll();
-			}
-
-			xOff = 0;
-			yOff += 16;
-		}
-		else {
-			xOff += 4 * 8;
-		}
-	}
-	else {
-		if (yOff + 16 > frameBuffer.height) {
-			scroll();
-		}
-		putChar(c, xOff, yOff, fgColor, bgColor);
-		if (xOff + 8 >= frameBuffer.width) {
-			xOff = 0;
-
-			if (yOff + 16 > frameBuffer.height) {
-				scroll();
-			}
-
-			yOff += 16;
-		}
-		else {
-			xOff += 8;
-		}
-	}
-	return *this;
+Renderer &Renderer::operator<<(uint8_t number) {
+	return printNumber(static_cast<uint64_t>(number));
 }
 
 Renderer &Renderer::operator<<(uint16_t number) {

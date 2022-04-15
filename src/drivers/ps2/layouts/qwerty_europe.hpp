@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-__attribute__((no_caller_saved_registers)) constexpr static inline unsigned char translateScancode(uint8_t scancode1, uint8_t scancode2) {
+__attribute__((no_caller_saved_registers)) constexpr static inline char translateScancode(uint8_t scancode1, uint8_t scancode2) {
 	switch (scancode1) {
 		// 1 esc
 		case 2: // 1
@@ -26,8 +26,6 @@ __attribute__((no_caller_saved_registers)) constexpr static inline unsigned char
 			return '0';
 		case 12: // +
 			return '+';
-		case 13: // ´
-			return L'´';
 		case 14: // backspace
 			return '\b';
 		case 15: // tab
@@ -52,10 +50,6 @@ __attribute__((no_caller_saved_registers)) constexpr static inline unsigned char
 			return 'o';
 		case 25:
 			return 'p';
-		case 26:
-			return L'å';
-		case 27:
-			return L'¨';
 		case 28: // enter
 			return '\n';
 		case 30: // a
@@ -76,10 +70,6 @@ __attribute__((no_caller_saved_registers)) constexpr static inline unsigned char
 			return 'k';
 		case 38:
 			return 'l';
-		case 39:
-			return L'ö';
-		case 40:
-			return L'ä';
 		case 43: // '
 			return '\'';
 		case 86: // <
