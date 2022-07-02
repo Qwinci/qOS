@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef struct {
+typedef struct Framebuffer {
 	void* address;
 	uint16_t bpp;
 	uint64_t pitch;
@@ -35,4 +35,5 @@ typedef struct {
 	uintptr_t kernel_virtual_address;
 	uintptr_t kernel_physical_address;
 	void* rsdp;
+	uintptr_t font_start;
 } BootInfo;

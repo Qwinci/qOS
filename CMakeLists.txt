@@ -10,8 +10,8 @@ file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.c src/*.h)
 
 add_executable(qos ${SRC})
 target_compile_options(qos PRIVATE -Wall -fno-stack-protector -fpic -mabi=sysv -mno-80387 -mno-mmx -mgeneral-regs-only
-        -mno-3dnow -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel)
-target_include_directories(qos PRIVATE src thirdparty)
+        -mno-3dnow -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -fno-builtin-printf)
+target_include_directories(qos PRIVATE src thirdparty src/std)
 target_link_options(qos PRIVATE -z max-page-size=0x1000 -T ${PROJECT_SOURCE_DIR}/kernel.ld -nostdlib -static)
 add_custom_command(TARGET qos POST_BUILD
         COMMAND mkdir -p ${PROJECT_BINARY_DIR}/iso_root
