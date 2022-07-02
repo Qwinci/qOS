@@ -1,3 +1,7 @@
+NC     = \033[0m
+YELLOW = \033[1;33m
+GREEN  = \033[1;32m
+
 CXX=clang
 LD=ld.lld
 AS=nasm
@@ -19,16 +23,16 @@ all: build/qos install
 
 build/kernel/%.o: src/%.cpp $(KERNEL_HEADERS)
 	@ mkdir -p $(@D)
-	@ echo COMPILING CXX OBJECT $@
+	@ echo -e "$(GREEN)COMPILING CXX OBJECT$(NC) $@"
 	@ $(CXX) $(CXXFLAGS) -c $< -o $@
 
 build/kernel/asm/%.o: src/%.asm
 	@ mkdir -p $(@D)
-	@ echo COMPILING ASM OBJECT $@
+	@ echo -e "$(GREEN)COMPILING ASM OBJECT$(NC) $@"
 	@ $(AS) $(ASFLAGS) $< -o $@
 
 build/qos: $(KERNEL_CXX_OBJ) $(KERNEL_ASM_OBJ)
-	@ echo LINKING KERNEL $@
+	@ echo -e "$(GREEN)LINKING KERNEL$(NC) $@"
 	@ $(LD) $(LDFLAGS) $^ -o $@
 
 run: all
@@ -48,4 +52,5 @@ install: build/qos
 	@ ./limine/limine-install build/image.iso &> /dev/null
 
 clean:
+	@ echo -e "$(YELLOW)CLEANING PROJECT$(NC)"
 	@ rm -rf build/kernel build/iso_root
