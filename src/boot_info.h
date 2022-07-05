@@ -29,7 +29,7 @@ typedef struct MemoryMap {
 	size_t entry_count;
 } MemoryMap;
 
-typedef struct {
+typedef struct BootInfo {
 	Framebuffer framebuffer;
 	MemoryMap memory_map;
 	uintptr_t kernel_virtual_address;

@@ -1,90 +1,191 @@
 #include "memory.h"
-#include "boot_info.h"
 #include <stdint.h>
 #include <stddef.h>
-#include "std/memory.h"
+#include "boot_info.h"
 
-static size_t* bitmap = NULL;
-static size_t bitmap_size = 0;
-static size_t bitmap_real_size = 0;
+typedef struct Node {
+	size_t size;
+	struct Node* next;
+	struct Node* prev;
+} Node;
 
-void initialize_memory(MemoryMap* memory_map) {
-	size_t best_size = 0;
-	uintptr_t best_entry = 0;
-	size_t largest_address = 0;
-	for (size_t i = 0; i < memory_map->entry_count; ++i) {
-		MemoryEntry* entry = memory_map->entries[i];
-		if (entry->type == MEMORYTYPE_USABLE && entry->size > best_size) {
-			best_entry = entry->base;
-			best_size = entry->size;
+static Node* root = NULL;
+static Node* end = NULL;
+
+Node* node_new(void* address, size_t size, Node* next, Node* prev) {
+	Node* node = (Node*) address;
+	node->size = size;
+	node->next = next;
+	node->prev = prev;
+	return node;
+}
+
+void try_merge_node(Node* node, Node** e) {
+	if (node->next && (uintptr_t) node + node->size * 0x1000 == (uintptr_t) node->next) {
+		node->size += node->next->size;
+		node->next = node->next->next;
+		if (node->next->next) node->next->next->prev = node;
+		if (node->next == *e) *e = node;
+	}
+	if (node->prev && (uintptr_t) node->prev + node->prev->size * 0x1000 == (uintptr_t) node) {
+		node->prev->size += node->size;
+		node->prev->next = node->next;
+		if (node->next) node->next->prev = node->prev;
+		if (node == *e) *e = node->prev;
+	}
+}
+
+void insert_node(void* ptr, size_t size) {
+	if (!root) {
+		root = node_new(ptr, size, NULL, NULL);
+		end = root;
+		return;
+	}
+	else if (ptr > (void*) end) {
+		if ((uintptr_t) end + end->size * 0x1000 == (uintptr_t) ptr) {
+			end->size += size;
+			return;
 		}
-		if (entry->base >= 0xffff800000000000) {
-			entry->base -= 0xffff800000000000;
+		end->next = node_new(ptr, size, NULL, end);
+		end = end->next;
+		try_merge_node(end, &end);
+		return;
+	}
+	else if (ptr < (void*) root) {
+		if ((uintptr_t) ptr + size * 0x1000 == (uintptr_t) root) {
+			Node* new_root = node_new(ptr, root->size + size, root->next, NULL);
+			if (root->next) root->next->prev = new_root;
+			if (end == root) end = new_root;
+			root = new_root;
+			return;
 		}
-		if (entry->base > largest_address) largest_address = entry->base;
+		Node* node = node_new(ptr, size, root, NULL);
+		root->prev = node;
+		if (end == root) end = node;
+		root = node;
+		return;
 	}
 
-	size_t page_count = largest_address / 0x1000 & 0xFFF ? largest_address / 0x1000 + 1 : largest_address / 0x1000;
-	bitmap_size = page_count;
-	size_t real_size = page_count & 0x7 ? page_count / 8 + 1 : page_count / 8;
-	bitmap_real_size = real_size;
-
-	if (best_size < bitmap_real_size) *(uintptr_t*) 0xFFFFFFFFFFFF = 0;
-
-	bitmap = (size_t*) best_entry;
-
-	memset(bitmap, 0xFF, bitmap_real_size);
-
-	for (size_t i = 0; i < memory_map->entry_count; ++i) {
-		MemoryEntry* entry = memory_map->entries[i];
-		if (entry->type == MEMORYTYPE_USABLE) {
-			for (size_t i2 = 0; i2 < entry->size / 0x1000; ++i2) {
-				bitmap[(entry->base + 0x1000 * i2) / 0x1000 / 64] &= ~(1 << ((entry->base + 0x1000 * i2) / 0x1000 % 64));
+	Node* node = root;
+	while (node->next) {
+		if ((void*) node > ptr) {
+			if (node == root) {
+				Node* old_root = root;
+				root = node_new(ptr, size, old_root, NULL);
+				old_root->prev = root;
+				try_merge_node(old_root, &end);
 			}
+			else {
+				Node* new_node = node_new(ptr, size, node, node->prev);
+				node->prev->next = new_node;
+				node->prev = node->prev->next;
+				try_merge_node(new_node, &end);
+			}
+			return;
 		}
+		node = node->next;
 	}
+
+	node->next = node_new(ptr, size, NULL, node);
+	end = node->next;
+	try_merge_node(node, &end);
+}
+
+void add_memory(void* memory, size_t size) {
+	if (size < 0x1000) return;
+	size_t pages = size / 0x1000;
+	insert_node(memory, pages);
+}
+
+void remove_node(Node* node, Node** r, Node** e) {
+	if (node->prev) node->prev->next = node->next;
+	if (node->next) node->next->prev = node->prev;
+	if (node == *r) *r = node->next;
+	if (node == *e) *e = node->prev;
 }
 
 void* pmalloc(size_t count, MemoryAllocType type) {
-	size_t found = 0;
-	size_t starting_index = 0;
-	if (type == MEMORY_ALLOC_TYPE_LOW) {
-		for (size_t i = 0; i < bitmap_size; ++i) {
-			size_t* entry = &bitmap[i / 64];
-			if (!(*entry & (1 << (i % 64)))) {
-				if (found == 0) starting_index = i;
-				++found;
-				if (found == count) {
-					for (size_t i2 = 0; i2 < count; ++i2) {
-						bitmap[(starting_index + i2) / 64] |= 1 << ((starting_index + i2) % 64);
-					}
-					return (void*) (starting_index * 0x1000);
+	if (type == MEMORY_ALLOC_TYPE_NORMAL) {
+		Node* node = root;
+		if (!node) return NULL;
+		do {
+			if (node->size >= count) {
+				size_t remaining = node->size - count;
+				remove_node(node, &root, &end);
+				if (remaining > 0) {
+					insert_node((void*) ((uintptr_t) node + count * 0x1000), remaining);
 				}
+
+				return (void*) node;
 			}
-			else found = 0;
-		}
+			node = node->next;
+		} while (node->next);
 	}
 	else {
-		for (size_t i = bitmap_size - 1; i > 0; --i) {
-			size_t* entry = &bitmap[i / 64];
-			if (!(*entry & (1 << (i % 64)))) {
-				if (found == 0) starting_index = i;
-				++found;
-				if (found == count) {
-					for (size_t i2 = 0; i2 < count; ++i2) {
-						bitmap[(starting_index - i2) / 64] |= 1 << ((starting_index - i2) % 64);
-					}
-					return (void*) (i * 0x1000);
+		Node* node = end;
+		if (!node) return NULL;
+		do {
+			if ((uintptr_t) node > 0x100000000) return NULL;
+			if (node->size >= count) {
+				size_t remaining = node->size - count;
+				remove_node(node, &root, &end);
+				if (remaining > 0) {
+					insert_node((void*) ((uintptr_t) node + count * 0x1000), remaining);
 				}
+
+				return (void*) node;
 			}
-			else found = 0;
-		}
+		} while (node->next);
 	}
+
 	return NULL;
 }
+
 void pfree(void* ptr, size_t count) {
-	uintptr_t memory = (uintptr_t) ptr;
-	for (size_t i = 0; i < count; ++i) {
-		bitmap[(memory + i * 0x1000) / 0x1000 / 64] &= ~(1 << ((memory + i * 0x1000) / 0x1000 % 64));
+	insert_node(ptr, count);
+}
+
+extern char kernel_end[];
+
+void initialize_memory(const BootInfo* boot_info) {
+	for (size_t i = 0; i < boot_info->memory_map.entry_count; ++i) {
+		const MemoryEntry* entry =boot_info->memory_map.entries[i];
+		if (entry->type == MEMORYTYPE_USABLE) {
+			add_memory((void*) entry->base, entry->size);
+		}
 	}
+
+	for (size_t i = 0; i < boot_info->memory_map.entry_count; ++i) {
+		const MemoryEntry* entry = boot_info->memory_map.entries[i];
+		uintptr_t address = entry->base;
+		for (size_t i2 = 0; i2 < entry->size;) {
+			if (address & 0xFFF) {
+				address &= 0xFFFFFFFFFFFFF000;
+				pmap(
+						address + i2,
+						address + i2 + 0xffff800000000000,
+						PAGEFLAG_PRESENT | PAGEFLAG_RW);
+			}
+			else {
+				pmap(
+						address + i2,
+						address + i2 + 0xffff800000000000,
+						PAGEFLAG_PRESENT | PAGEFLAG_RW);
+				i2 += 0x1000;
+			}
+		}
+	}
+	for (size_t i = 0; i < 0x100000000; i += 0x1000) {
+		pmap(i, 0xffff800000000000 + i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	}
+
+	for (uintptr_t i = 0; i < (uintptr_t) kernel_end - boot_info->kernel_virtual_address; i += 0x1000) {
+		pmap(
+				boot_info->kernel_physical_address + i,
+				boot_info->kernel_virtual_address + i,
+				PAGEFLAG_PRESENT | PAGEFLAG_RW
+		);
+	}
+
+	preload();
 }

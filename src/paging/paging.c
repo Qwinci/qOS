@@ -16,7 +16,7 @@ void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags)
 	physical_address &= 0xFFFFFFFFFFFF000;
 
 	if (!pml4) {
-		pml4 = 0xffff800000000000 + pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
+		pml4 = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
 		memset(pml4, 0, 0x1000);
 	}
 
@@ -26,10 +26,9 @@ void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags)
 	}
 	else {
 		pdp_entry = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
-		memset((void*) pdp_entry + 0xffff800000000000, 0, 0x1000);
+		memset((void*) pdp_entry, 0, 0x1000);
 		pml4[pml4_offset] |= (uint64_t) pdp_entry | flags;
 	}
-	pdp_entry = (void*) pdp_entry + 0xffff800000000000;
 
 	uint64_t* pd_entry;
 	if (pdp_entry[pdp_offset] & PAGEFLAG_PRESENT) {
@@ -37,10 +36,9 @@ void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags)
 	}
 	else {
 		pd_entry = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
-		memset((void*) pd_entry + 0xffff800000000000, 0, 0x1000);
+		memset((void*) pd_entry, 0, 0x1000);
 		pdp_entry[pdp_offset] |= (uint64_t) pd_entry | flags;
 	}
-	pd_entry = (void*) pd_entry + 0xffff800000000000;
 
 	uint64_t* pt_entry;
 	if (pd_entry[pd_offset] & PAGEFLAG_PRESENT) {
@@ -48,10 +46,9 @@ void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags)
 	}
 	else {
 		pt_entry = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
-		memset((void*) pt_entry + 0xffff800000000000, 0, 0x1000);
+		memset((void*) pt_entry, 0, 0x1000);
 		pd_entry[pd_offset] |= (uint64_t) pt_entry | flags;
 	}
-	pt_entry = (void*) pt_entry + 0xffff800000000000;
 
 	pt_entry[pt_offset] = physical_address | flags;
 }
@@ -66,7 +63,7 @@ void punmap(uintptr_t virtual_address) {
 	uint64_t pml4_offset = virtual_address & 0x1FF;
 
 	if (!pml4) {
-		pml4 = 0xffff800000000000 + pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
+		pml4 = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
 		memset(pml4, 0, 0x1000);
 	}
 
@@ -76,10 +73,9 @@ void punmap(uintptr_t virtual_address) {
 	}
 	else {
 		pdp_entry = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
-		memset((void*) pdp_entry + 0xffff800000000000, 0, 0x1000);
+		memset((void*) pdp_entry, 0, 0x1000);
 		pml4[pml4_offset] |= (uint64_t) pdp_entry;
 	}
-	pdp_entry = (void*) pdp_entry + 0xffff800000000000;
 
 	uint64_t* pd_entry;
 	if (pdp_entry[pdp_offset] & PAGEFLAG_PRESENT) {
@@ -87,10 +83,9 @@ void punmap(uintptr_t virtual_address) {
 	}
 	else {
 		pd_entry = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
-		memset((void*) pd_entry + 0xffff800000000000, 0, 0x1000);
+		memset((void*) pd_entry, 0, 0x1000);
 		pdp_entry[pdp_offset] |= (uint64_t) pd_entry;
 	}
-	pd_entry = (void*) pd_entry + 0xffff800000000000;
 
 	uint64_t* pt_entry;
 	if (pd_entry[pd_offset] & PAGEFLAG_PRESENT) {
@@ -98,10 +93,9 @@ void punmap(uintptr_t virtual_address) {
 	}
 	else {
 		pt_entry = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
-		memset((void*) pt_entry + 0xffff800000000000, 0, 0x1000);
+		memset((void*) pt_entry, 0, 0x1000);
 		pd_entry[pd_offset] |= (uint64_t) pt_entry;
 	}
-	pt_entry = (void*) pt_entry + 0xffff800000000000;
 
 	pt_entry[pt_offset] = 0;
 }
