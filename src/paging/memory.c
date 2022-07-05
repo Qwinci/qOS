@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "boot_info.h"
+#include "stdio.h"
 
 typedef struct Node {
 	size_t size;
@@ -11,6 +12,7 @@ typedef struct Node {
 
 static Node* root = NULL;
 static Node* end = NULL;
+static size_t offset = 0;
 
 Node* node_new(void* address, size_t size, Node* next, Node* prev) {
 	Node* node = (Node*) address;
@@ -163,20 +165,21 @@ void initialize_memory(const BootInfo* boot_info) {
 				address &= 0xFFFFFFFFFFFFF000;
 				pmap(
 						address + i2,
-						address + i2 + 0xffff800000000000,
+						address + i2 + 0xFFFF800000000000,
 						PAGEFLAG_PRESENT | PAGEFLAG_RW);
 			}
 			else {
 				pmap(
 						address + i2,
-						address + i2 + 0xffff800000000000,
+						address + i2 + 0xFFFF800000000000,
 						PAGEFLAG_PRESENT | PAGEFLAG_RW);
 				i2 += 0x1000;
 			}
 		}
 	}
 	for (size_t i = 0; i < 0x100000000; i += 0x1000) {
-		pmap(i, 0xffff800000000000 + i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+		pmap(i, 0xFFFF800000000000 + i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+		//pmap(i, i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
 	}
 
 	for (uintptr_t i = 0; i < (uintptr_t) kernel_end - boot_info->kernel_virtual_address; i += 0x1000) {
@@ -188,4 +191,18 @@ void initialize_memory(const BootInfo* boot_info) {
 	}
 
 	preload();
+
+	if (!root) return;
+	Node* node = (Node*) ((uintptr_t) root + 0xFFFF800000000000);
+	root = (Node*) ((uintptr_t) root + 0xFFFF800000000000);
+	end = (Node*) ((uintptr_t) end + 0xFFFF800000000000);
+	while (node) {
+		if (node->next) {
+			node->next = (Node*) ((uintptr_t) node->next + 0xFFFF800000000000);
+		}
+		if (node->prev) {
+			node->prev = (Node*) ((uintptr_t) node->prev + 0xFFFF800000000000);
+		}
+		node = node->next;
+	}
 }

@@ -35,12 +35,31 @@ typedef struct {
 
 static Psf2Font* font;
 
-void initialize_printf(Framebuffer* framebuffer, uintptr_t font_start) {
+void initialize_printf(Framebuffer* fb, uintptr_t font_start) {
 	font = (Psf2Font*) font_start;
 	if (font->magic != 0x864ab572) font = NULL;
-	state.fb = framebuffer;
+	state.fb = fb;
 	state.fg = 0x00FF00;
 	state.bg = 0;
+	framebuffer = fb;
+}
+
+__attribute__((no_caller_saved_registers)) void set_fg_color(uint32_t color) {
+	state.fg = color;
+}
+
+__attribute__((no_caller_saved_registers)) void set_bg_color(uint32_t color) {
+	state.bg = color;
+}
+
+__attribute__((no_caller_saved_registers)) void clear_screen(uint32_t color) {
+	for (uint64_t y = 0; y < state.fb->height; ++y) {
+		for (uint64_t x = 0; x < state.fb->width; ++x) {
+			*((uint32_t*) (state.fb->address + state.fb->pitch * y + state.fb->bpp / 8 * x)) = color;
+		}
+	}
+	state.line = 0;
+	state.col = 0;
 }
 
 static inline void put_char(char character, uint32_t col, uint32_t line) {
@@ -56,7 +75,18 @@ static inline void put_char(char character, uint32_t col, uint32_t line) {
 	}
 }
 
-void printf(const char* fmt, ...) { // NOLINT(misc-no-recursion)
+static inline void put_string(const char* str) {
+	for (; *str; ++str) {
+		if (state.col * font->width + font->width > state.fb->width) {
+			state.col = 0;
+			++state.line;
+		}
+		if (state.line * font->height > state.fb->height) break;
+		put_char(*str, state.col++, state.line);
+	}
+}
+
+void printf(const char* fmt, ...) {
 	va_list valist;
 	va_start(valist, fmt);
 
@@ -84,7 +114,7 @@ void printf(const char* fmt, ...) { // NOLINT(misc-no-recursion)
 
 				if (is_negative) string[i--] = '-';
 
-				printf(string + i + 1);
+				put_string(string + i + 1);
 			}
 			else if (strncmp(fmt, "i64", 3)) { // NOLINT(bugprone-suspicious-string-compare)
 				fmt += 2;
@@ -107,7 +137,7 @@ void printf(const char* fmt, ...) { // NOLINT(misc-no-recursion)
 
 				if (is_negative) string[i--] = '-';
 
-				printf(string + i + 1);
+				put_string(string + i + 1);
 			}
 			else if (strncmp(fmt, "u64", 3) || strncmp(fmt, "u32", 3) // NOLINT(bugprone-suspicious-string-compare)
 					|| strncmp(fmt, "u16", 3) || strncmp(fmt, "u8", 2)) { // NOLINT(bugprone-suspicious-string-compare)
@@ -124,9 +154,9 @@ void printf(const char* fmt, ...) { // NOLINT(misc-no-recursion)
 					value /= 10;
 				}
 
-				printf(string + i + 1);
+				put_string(string + i + 1);
 			}
-			else if (*fmt == 'h') { // NOLINT(bugprone-suspicious-string-compare)
+			else if (*fmt == 'h') {
 				uintptr_t value = va_arg(valist, uintptr_t);
 
 				char string[21];
@@ -139,17 +169,15 @@ void printf(const char* fmt, ...) { // NOLINT(misc-no-recursion)
 					value /= 16;
 				}
 
-				printf(string + i + 1);
+				put_string(string + i + 1);
 			}
 			else if (*fmt == 's') {
-				++fmt;
 				const char* string = va_arg(valist, const char*);
-				printf(string);
+				put_string(string);
 			}
 			else if (*fmt == 'c') {
-				++fmt;
 				char string[2] = {va_arg(valist, int32_t), 0};
-				printf(string);
+				put_string(string);
 			}
 		}
 		else if (*fmt == '\n') {
