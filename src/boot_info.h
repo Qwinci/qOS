@@ -24,7 +24,7 @@ typedef struct {
 	MemoryType type;
 } MemoryEntry;
 
-typedef struct {
+typedef struct MemoryMap {
 	MemoryEntry** entries;
 	size_t entry_count;
 } MemoryMap;

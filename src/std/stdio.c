@@ -3,6 +3,14 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "boot_info.h"
+#include <stdbool.h>
+
+static inline bool strncmp(const char* str1, const char* str2, size_t count) {
+	for (size_t i = 0; i < count; ++str1, ++str2, ++i) {
+		if (!*str1 || !*str2 || *str1 != *str2) return false;
+	}
+	return true;
+}
 
 typedef struct {
 	Framebuffer* fb;
@@ -48,19 +56,68 @@ static inline void put_char(char character, uint32_t col, uint32_t line) {
 	}
 }
 
-void printf(const char* fmt, ...) {
+void printf(const char* fmt, ...) { // NOLINT(misc-no-recursion)
 	va_list valist;
 	va_start(valist, fmt);
 
 	for (; *fmt; ++fmt) {
 		if (*fmt == '%' && *(fmt + 1) != 0) {
-			char next = *(fmt + 1);
-			if (next == 'd') {
+			++fmt;
+			if (*fmt == 'd' || strncmp(fmt, "i32", 3)) { // NOLINT(bugprone-suspicious-string-compare)
+				if (*fmt != 'd') fmt += 2;
 				int32_t value = va_arg(valist, int32_t);
 
-				char string[12];
-				string[11] = 0;
-				uint8_t i = 10;
+				char string[21];
+				string[20] = 0;
+				uint8_t i = 19;
+				bool is_negative = false;
+				if (value < 0) {
+					is_negative = true;
+					value *= -1;
+				}
+				else if (value == 0) string[i--] = '0';
+
+				while (value > 0) {
+					string[i--] = (char) ('0' + value % 10);
+					value /= 10;
+				}
+
+				if (is_negative) string[i--] = '-';
+
+				printf(string + i + 1);
+			}
+			else if (strncmp(fmt, "i64", 3)) { // NOLINT(bugprone-suspicious-string-compare)
+				fmt += 2;
+				int64_t value = va_arg(valist, int64_t);
+
+				char string[21];
+				string[20] = 0;
+				uint8_t i = 19;
+				bool is_negative = false;
+				if (value < 0) {
+					is_negative = true;
+					value *= -1;
+				}
+				else if (value == 0) string[i--] = '0';
+
+				while (value > 0) {
+					string[i--] = (char) ('0' + value % 10);
+					value /= 10;
+				}
+
+				if (is_negative) string[i--] = '-';
+
+				printf(string + i + 1);
+			}
+			else if (strncmp(fmt, "u64", 3) || strncmp(fmt, "u32", 3) // NOLINT(bugprone-suspicious-string-compare)
+					|| strncmp(fmt, "u16", 3) || strncmp(fmt, "u8", 2)) { // NOLINT(bugprone-suspicious-string-compare)
+				fmt += 2;
+				uint64_t value = va_arg(valist, uint64_t);
+
+				char string[21];
+				string[20] = 0;
+				uint8_t i = 19;
+				if (value == 0) string[i--] = '0';
 
 				while (value > 0) {
 					string[i--] = (char) ('0' + value % 10);
@@ -69,14 +126,36 @@ void printf(const char* fmt, ...) {
 
 				printf(string + i + 1);
 			}
-			else if (next == 's') {
-				const char* string = va_arg(valist, const char*);
+			else if (*fmt == 'h') { // NOLINT(bugprone-suspicious-string-compare)
+				uintptr_t value = va_arg(valist, uintptr_t);
 
+				char string[21];
+				string[20] = 0;
+				uint8_t i = 19;
+				if (value == 0) string[i--] = '0';
+
+				while (value > 0) {
+					string[i--] = (char) (value % 16 < 10 ? '0' + value % 16 : 'A' + value % 16 - 10);
+					value /= 16;
+				}
+
+				printf(string + i + 1);
+			}
+			else if (*fmt == 's') {
+				++fmt;
+				const char* string = va_arg(valist, const char*);
 				printf(string);
 			}
-			++fmt;
+			else if (*fmt == 'c') {
+				++fmt;
+				char string[2] = {va_arg(valist, int32_t), 0};
+				printf(string);
+			}
 		}
-		else if (*fmt == '\n') ++state.line;
+		else if (*fmt == '\n') {
+			state.col = 0;
+			++state.line;
+		}
 		else if (*fmt == '\t') {
 			if (state.col % 4) state.col += 4 - state.col % 4;
 			else state.col += 4;

@@ -6,7 +6,7 @@ CC = clang
 LD = ld.lld
 AS = nasm
 
-CFLAGS = -O2 -Wall -Isrc -g -std=c2x -Ithirdparty -fno-builtin-printf
+CFLAGS = -O2 -Wall -Isrc -g -std=c2x -Ithirdparty -fno-builtin-printf -masm=intel
 CFLAGS += -ffreestanding -fno-stack-protector -fpic -mabi=sysv -mno-80387 -mno-mmx -mgeneral-regs-only
 CFLAGS += -mno-3dnow -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel
 LDFLAGS = -z max-page-size=0x1000 -T kernel.ld -nostdlib -static
