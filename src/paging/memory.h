@@ -12,7 +12,11 @@ typedef enum {
 typedef enum {
 	PAGEFLAG_PRESENT = 1 << 0,
 	PAGEFLAG_RW = 1 << 1,
-	PAGEFLAG_USER = 1 << 2
+	PAGEFLAG_USER = 1 << 2,
+	PAGEFLAG_WRITE_THROUGH = 1 << 3,
+	PAGEFLAG_CACHE_DISABLE = 1 << 4,
+	PAGEFLAG_HUGE_PAGE = 1 << 7,
+	PAGEFLAG_GLOBAL = 1 << 8
 } PageFlag;
 
 void initialize_memory(const BootInfo* boot_info);

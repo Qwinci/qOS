@@ -148,6 +148,7 @@ void pfree(void* ptr, size_t count) {
 }
 
 extern char kernel_end[];
+extern size_t p_offset;
 
 void initialize_memory(const BootInfo* boot_info) {
 	for (size_t i = 0; i < boot_info->memory_map.entry_count; ++i) {
@@ -179,7 +180,6 @@ void initialize_memory(const BootInfo* boot_info) {
 	}
 	for (size_t i = 0; i < 0x100000000; i += 0x1000) {
 		pmap(i, 0xFFFF800000000000 + i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-		//pmap(i, i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
 	}
 
 	for (uintptr_t i = 0; i < (uintptr_t) kernel_end - boot_info->kernel_virtual_address; i += 0x1000) {
@@ -205,4 +205,6 @@ void initialize_memory(const BootInfo* boot_info) {
 		}
 		node = node->next;
 	}
+
+	p_offset = 0xFFFF800000000000;
 }
