@@ -57,3 +57,8 @@ add_custom_target(run
         -m 2G -machine q35 -cpu qemu64 -smp 2 -d int -no-reboot -no-shutdown
         DEPENDS qos
         USES_TERMINAL VERBATIM)
+add_custom_target(debug
+        COMMAND qemu-system-x86_64 -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
+        -m 2G -machine q35 -cpu qemu64 -smp 2 -d int -no-reboot -no-shutdown -S -s
+        DEPENDS qos
+        USES_TERMINAL VERBATIM)

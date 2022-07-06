@@ -50,6 +50,7 @@ void initialize_interrupts() {
 	memset((void*) idtr.offset, 0, 0x1000);
 
 	register_interrupt(0xE, pagefault_handler, INTERRUPT_TYPE_TRAP);
+	register_interrupt(0x20, keyboard_interrupt, INTERRUPT_TYPE_INTERRUPT);
 
 	__asm__("lidt %0" : : "m"(idtr));
 	__asm__("sti");

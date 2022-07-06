@@ -11,11 +11,17 @@ typedef struct InterruptFrame {
 	uint16_t ss;
 } InterruptFrame;
 
-__attribute__((interrupt)) void pagefault_handler(InterruptFrame* interrupt_frame) {
+__attribute__((interrupt)) void pagefault_handler(InterruptFrame* interrupt_frame, uint64_t error) {
 	uint64_t address;
 	__asm__("mov %0, cr2" : "=r"(address));
 	printf("pagefault at address 0x%h\n", address);
 	printf("IP: 0x%h\n", 0xffffffff80000000 + interrupt_frame->ip);
+
+	while (true) __asm__("hlt");
+}
+
+__attribute__((interrupt)) void keyboard_interrupt(InterruptFrame* interrupt_frame) {
+	printf("keyboard\n");
 
 	while (true) __asm__("hlt");
 }
