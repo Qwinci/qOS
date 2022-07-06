@@ -103,3 +103,7 @@ void punmap(uintptr_t virtual_address) {
 void preload() {
 	__asm__("mov cr3, %0" : : "r"(pml4));
 }
+
+void prefresh(uintptr_t address) {
+	__asm__("invlpg %0" : : "m"(address));
+}

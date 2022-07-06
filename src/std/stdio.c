@@ -4,13 +4,7 @@
 #include <stddef.h>
 #include "boot_info.h"
 #include <stdbool.h>
-
-static inline bool strncmp(const char* str1, const char* str2, size_t count) {
-	for (size_t i = 0; i < count; ++str1, ++str2, ++i) {
-		if (!*str1 || !*str2 || *str1 != *str2) return false;
-	}
-	return true;
-}
+#include "string.h"
 
 typedef struct {
 	Framebuffer* fb;
@@ -89,17 +83,16 @@ static inline void put_string(const char* str) {
 void printf(const char* fmt, ...) {
 	va_list valist;
 	va_start(valist, fmt);
-
 	for (; *fmt; ++fmt) {
 		if (*fmt == '%' && *(fmt + 1) != 0) {
 			++fmt;
-			if (*fmt == 'd' || strncmp(fmt, "i32", 3)) { // NOLINT(bugprone-suspicious-string-compare)
+			if (*fmt == 'd' || strncmp(fmt, "i32", 3) == 0) {
 				if (*fmt != 'd') fmt += 2;
 				int32_t value = va_arg(valist, int32_t);
 
 				char string[21];
 				string[20] = 0;
-				uint8_t i = 19;
+				int16_t i = 19;
 				bool is_negative = false;
 				if (value < 0) {
 					is_negative = true;
@@ -116,13 +109,13 @@ void printf(const char* fmt, ...) {
 
 				put_string(string + i + 1);
 			}
-			else if (strncmp(fmt, "i64", 3)) { // NOLINT(bugprone-suspicious-string-compare)
+			else if (strncmp(fmt, "i64", 3) == 0) {
 				fmt += 2;
 				int64_t value = va_arg(valist, int64_t);
 
 				char string[21];
 				string[20] = 0;
-				uint8_t i = 19;
+				int16_t i = 19;
 				bool is_negative = false;
 				if (value < 0) {
 					is_negative = true;
@@ -139,16 +132,15 @@ void printf(const char* fmt, ...) {
 
 				put_string(string + i + 1);
 			}
-			else if (strncmp(fmt, "u64", 3) || strncmp(fmt, "u32", 3) // NOLINT(bugprone-suspicious-string-compare)
-					|| strncmp(fmt, "u16", 3) || strncmp(fmt, "u8", 2)) { // NOLINT(bugprone-suspicious-string-compare)
+			else if (strncmp(fmt, "u64", 3) == 0 || strncmp(fmt, "u32", 3) == 0
+					|| strncmp(fmt, "u16", 3) == 0 || strncmp(fmt, "u8", 2) == 0) {
 				fmt += 2;
 				uint64_t value = va_arg(valist, uint64_t);
 
 				char string[21];
 				string[20] = 0;
-				uint8_t i = 19;
+				int16_t i = 19;
 				if (value == 0) string[i--] = '0';
-
 				while (value > 0) {
 					string[i--] = (char) ('0' + value % 10);
 					value /= 10;
@@ -161,7 +153,7 @@ void printf(const char* fmt, ...) {
 
 				char string[21];
 				string[20] = 0;
-				uint8_t i = 19;
+				int16_t i = 19;
 				if (value == 0) string[i--] = '0';
 
 				while (value > 0) {

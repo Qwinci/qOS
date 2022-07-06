@@ -21,3 +21,4 @@ void pfree(void* ptr, size_t count);
 void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags);
 void punmap(uintptr_t virtual_address);
 void preload();
+void prefresh(uintptr_t address);
