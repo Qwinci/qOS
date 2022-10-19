@@ -4,16 +4,12 @@
 #include "std/memory.h"
 #include "handlers.h"
 #include "gdt.h"
+#include "stdio.h"
 
 typedef struct {
 	uint16_t size;
 	uint64_t offset;
 } __attribute__((packed)) IDTR;
-
-typedef enum {
-	INTERRUPT_TYPE_INTERRUPT = 0x8E,
-	INTERRUPT_TYPE_TRAP = 0x8F
-} InterruptType;
 
 typedef struct {
 	uint16_t offset1;
@@ -45,12 +41,15 @@ void initialize_interrupts() {
 	__asm__("cli");
 	load_gdt();
 
-	idtr.size = 255;
+	idtr.size = 0x1000 - 1;
 	idtr.offset = (uint64_t) pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
 	memset((void*) idtr.offset, 0, 0x1000);
 
-	register_interrupt(0xE, pagefault_handler, INTERRUPT_TYPE_TRAP);
+	register_interrupt(0x8, double_fault_handler, INTERRUPT_TYPE_TRAP);
+	register_interrupt(0xD, general_protection_fault_handler, INTERRUPT_TYPE_TRAP);
+	register_interrupt(0xE, page_fault_handler, INTERRUPT_TYPE_TRAP);
 	register_interrupt(0x20, keyboard_interrupt, INTERRUPT_TYPE_INTERRUPT);
+	register_interrupt(0x21, sb16_interrupt, INTERRUPT_TYPE_INTERRUPT);
 
 	__asm__("lidt %0" : : "m"(idtr));
 	__asm__("sti");

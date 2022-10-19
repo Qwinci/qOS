@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "assert.h"
 
 typedef struct {
 	char signature[4];
@@ -12,5 +13,7 @@ typedef struct {
 	uint32_t creator_id;
 	uint32_t creator_revision;
 } SDTHeader;
+
+static_assert(sizeof(SDTHeader) == 36);
 
 void* locate_acpi_table(void* rsdp, const char* signature);

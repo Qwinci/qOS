@@ -17,7 +17,7 @@ void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags)
 	physical_address &= 0xFFFFFFFFFFFF000;
 
 	if (!pml4) {
-		pml4 = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
+		pml4 = (uint64_t*) ((uintptr_t) pmalloc(1, MEMORY_ALLOC_TYPE_LOW) - p_offset);
 		memset(pml4, 0, 0x1000);
 	}
 

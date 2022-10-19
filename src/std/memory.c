@@ -1,8 +1,15 @@
 #include "memory.h"
 
-void* memset(void* dst, int ch, size_t count) {
-	for (size_t i = 0; i < count; ++i, ++dst) {
-		*(unsigned char*) dst = (unsigned char) ch;
+void* memset(void* dest, int ch, size_t count) {
+	for (size_t i = 0; i < count; ++i, ++dest) {
+		*(unsigned char*) dest = (unsigned char) ch;
 	}
-	return dst;
+	return dest;
+}
+
+void* memcpy(void* dest, const void* src, size_t count) {
+	for (size_t i = 0; i < count; ++i, ++src, ++dest) {
+		*(unsigned char*) dest = *(unsigned char*) src;
+	}
+	return dest;
 }

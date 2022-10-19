@@ -134,7 +134,8 @@ void printf(const char* fmt, ...) {
 			}
 			else if (strncmp(fmt, "u64", 3) == 0 || strncmp(fmt, "u32", 3) == 0
 					|| strncmp(fmt, "u16", 3) == 0 || strncmp(fmt, "u8", 2) == 0) {
-				fmt += 2;
+				if (strncmp(fmt, "u8", 2) == 0) ++fmt;
+				else fmt += 2;
 				uint64_t value = va_arg(valist, uint64_t);
 
 				char string[21];
