@@ -4,6 +4,9 @@
 
 void initialize_pci(void* rsdp);
 
+#define PCI_CAP_MSI 0x5
+#define PCI_CAP_MSI_X 0x11
+
 typedef struct {
 	uint16_t vendor_id;
 	uint16_t device_id;
@@ -44,3 +47,31 @@ typedef struct {
 } PCIDeviceHeader0;
 
 static_assert(sizeof(PCIDeviceHeader0) == sizeof(PCIDeviceHeader) + 48);
+
+typedef struct {
+	uint8_t id;
+	uint8_t next;
+	uint16_t msg_control;
+	uint64_t msg_addr;
+	uint16_t msg_data;
+	uint16_t reserved;
+	uint64_t mask;
+	uint64_t pending;
+} PciMsiCapability;
+
+#define MSI_CTRL_ENABLE (1 << 0)
+#define MSI_CTRL_MM_1_CAPABLE (0b000 << 1)
+#define MSI_CTRL_MM_2_CAPABLE (0b001 << 1)
+#define MSI_CTRL_MM_4_CAPABLE (0b010 << 1)
+#define MSI_CTRL_MM_8_CAPABLE (0b011 << 1)
+#define MSI_CTRL_MM_16_CAPABLE (0b100 << 1)
+#define MSI_CTRL_MM_32_CAPABLE (0b101 << 1)
+#define MSI_CTRL_MM_CAPABLE (0b111 << 1)
+#define MSI_CTRL_MM_1_ENABLE (0b000 << 4)
+#define MSI_CTRL_MM_2_ENABLE (0b001 << 4)
+#define MSI_CTRL_MM_4_ENABLE (0b010 << 4)
+#define MSI_CTRL_MM_8_ENABLE (0b011 << 4)
+#define MSI_CTRL_MM_16_ENABLE (0b100 << 4)
+#define MSI_CTRL_MM_32_ENABLE (0b101 << 4)
+#define MSI_CTRL_64_BIT (1 << 7)
+#define MSI_CTRL_PER_VECTOR_MASKING (1 << 8)

@@ -1,6 +1,5 @@
 #include "timers.h"
 #include "drivers/hpet.h"
-#include "drivers/tsc.h"
 #include "stdio.h"
 
 void initialize_timers(void* rsdp) {

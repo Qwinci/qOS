@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef enum : uint32_t {
 	LAPIC_REG_ID = 0x20,
@@ -68,5 +69,6 @@ typedef struct {
 } IoApicRedirectionEntry;
 
 void register_io_apic_redirection_entry(uint8_t io_apic_irq, IoApicRedirectionEntry entry);
+bool io_apic_is_entry_free(uint8_t io_apic_irq);
 
 extern uint8_t bsp_apic_id;

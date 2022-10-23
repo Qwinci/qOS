@@ -107,21 +107,30 @@ void* pmalloc(size_t count, MemoryAllocType type) {
 	do {
 		if (node->size >= count) {
 			size_t remaining = node->size - count;
-			if (remaining == 0) {
-				remove_node(node, &root, &end);
+			if (start_from_root) {
+				if (remaining == 0) {
+					remove_node(node, &root, &end);
+					return (void*) node;
+				}
+				Node* new_node = (Node*) ((uintptr_t) node + count * 0x1000);
+				new_node->size = remaining;
+				new_node->prev = node->prev;
+				new_node->next = node->next;
+
+				if (node->prev) node->prev->next = new_node;
+				if (node->next) node->next->prev = new_node;
+				if (node == root) root = new_node;
+				if (node == end) end = new_node;
+
 				return (void*) node;
 			}
-			Node* new_node = (Node*) ((uintptr_t) node + count * 0x1000);
-			new_node->size = remaining;
-			new_node->prev = node->prev;
-			new_node->next = node->next;
-
-			if (node->prev) node->prev->next = new_node;
-			if (node->next) node->next->prev = new_node;
-			if (node == root) root = new_node;
-			if (node == end) end = new_node;
-
-			return (void*) node;
+			else {
+				node->size = remaining;
+				if (node->size == 0) {
+					remove_node(node, &root, &end);
+				}
+				return (void*) ((uintptr_t) node + remaining * 0x1000);
+			}
 		}
 		node = start_from_root ? node->next : node->prev;
 	} while (start_from_root ? node->next : node->prev);

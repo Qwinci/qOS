@@ -62,7 +62,6 @@ bool initialize_hpet(void* rsdp) {
 
 	uint64_t cap = read_register_64(REG_CAP);
 	if ((cap & 1 << 13) == 0) {
-		// todo 32bit support
 		return false;
 	}
 
@@ -71,15 +70,26 @@ bool initialize_hpet(void* rsdp) {
 
 	uint64_t timer0_conf = read_register_64(REG_TIMER_CONF(0));
 	uint32_t timer0_supported_irqs = timer0_conf >> 32;
-	if ((timer0_supported_irqs & 1 << 16) == 0) {
-		// todo other irqs
-		printf("hpet only supports irq 16\n");
-		return false;
-	}
-	printf("supported irqs: 0x%h\n", timer0_supported_irqs);
 
-	// irq and non periodic mode
-	timer0_conf = 16 << 9 | 1 << 2;
+	bool supported_irq_found = false;
+	for (int16_t i = 23; i >= 0; --i) {
+		if (timer0_supported_irqs & 1 << i && io_apic_is_entry_free(i)) {
+			// irq and non periodic mode
+			timer0_conf |= i << 9 | 1 << 2;
+			supported_irq_found = true;
+
+			IoApicRedirectionEntry entry = {
+					.vector = IRQ0 + i,
+					.destination = bsp_apic_id
+			};
+
+			register_interrupt(IRQ0 + i, timer0_interrupt, INTERRUPT_TYPE_INTERRUPT);
+			register_io_apic_redirection_entry(i, entry);
+			break;
+		}
+	}
+
+	if (!supported_irq_found) return false;
 
 	write_register_64(REG_TIMER_CONF(0), timer0_conf);
 
@@ -87,14 +97,6 @@ bool initialize_hpet(void* rsdp) {
 	conf &= ~CONF_LEGACY_MAPPING_ENABLED;
 	conf |= CONF_ENABLE;
 	write_register_64(REG_CONF, conf);
-
-	IoApicRedirectionEntry entry = {
-			.vector = IRQ0 + 16,
-			.destination = bsp_apic_id
-	};
-
-	register_interrupt(IRQ0 + 16, timer0_interrupt, INTERRUPT_TYPE_INTERRUPT);
-	register_io_apic_redirection_entry(16, entry);
 
 	hpet_initialized = true;
 

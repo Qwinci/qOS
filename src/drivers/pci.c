@@ -37,7 +37,10 @@ static_assert(sizeof(PCIEntry) == 16);
 void enumerate_function(uintptr_t base, uint8_t function) {
 	uintptr_t address = base + ((uintptr_t) function << 12);
 
-	pmap(address - 0xFFFF800000000000, address, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	pmap(
+			address - 0xFFFF800000000000,
+			address,
+			PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
 	prefresh(address);
 
 	PCIDeviceHeader* header = (PCIDeviceHeader*) address;
@@ -57,6 +60,14 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 
 	printf("class: %u8, subclass: %u8\n", header->class, header->subclass);
 
+	if (header->class == 0 && header->subclass == 0) {
+		printf("u64: 0x%h\n", *(volatile uint64_t*) header);
+		printf("memory dump sizeof(u32) * 15:\n");
+		for (uint8_t i = 0; i < 15; ++i) {
+			printf("u32: 0x%h\n", *(volatile uint32_t*) ((uintptr_t) header + i * sizeof(uint32_t)));
+		}
+	}
+
 	PCIDeviceHeader0* header0 = (PCIDeviceHeader0*) header;
 
 	if (header->vendor_id == 0x8086 && header->device_id == 0x10D3) {
@@ -69,14 +80,22 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 void enumerate_device(uintptr_t base, uint8_t slot) {
 	uintptr_t address = base + ((uintptr_t) slot << 15);
 
-	pmap(address - 0xFFFF800000000000, address, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	pmap(
+			address - 0xFFFF800000000000,
+			address,
+			PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
 	prefresh(address);
 
 	PCIDeviceHeader* header = (PCIDeviceHeader*) address;
 
 	if (header->device_id == 0 || header->vendor_id == 0xFFFF) return;
 
-	for (uint8_t function = 0; function < 8; ++function) {
+	uint8_t max_function = 8;
+	if ((header->header_type & 1 << 7) == 0) {
+		max_function = 1;
+	}
+
+	for (uint8_t function = 0; function < max_function; ++function) {
 		enumerate_function(address, function);
 	}
 }
@@ -84,7 +103,10 @@ void enumerate_device(uintptr_t base, uint8_t slot) {
 void enumerate_bus(uintptr_t base, uint8_t bus) {
 	uintptr_t address = base + ((uintptr_t) bus << 20);
 
-	pmap(address - 0xFFFF800000000000, address, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	pmap(
+			address - 0xFFFF800000000000,
+			address,
+			PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
 	prefresh(address);
 
 	PCIDeviceHeader* header = (PCIDeviceHeader*) address;

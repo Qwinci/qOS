@@ -28,6 +28,7 @@ typedef struct {
 } Psf2Font;
 
 static Psf2Font* font;
+static Framebuffer framebuffer;
 
 void initialize_printf(Framebuffer* fb, uintptr_t font_start) {
 	font = (Psf2Font*) font_start;
@@ -35,7 +36,7 @@ void initialize_printf(Framebuffer* fb, uintptr_t font_start) {
 	state.fb = fb;
 	state.fg = 0x00FF00;
 	state.bg = 0;
-	framebuffer = fb;
+	framebuffer = *fb;
 }
 
 __attribute__((no_caller_saved_registers)) void set_fg_color(uint32_t color) {

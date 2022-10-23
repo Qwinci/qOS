@@ -1,6 +1,8 @@
 #include "intel_82574.h"
 #include "paging/memory.h"
 #include "stdio.h"
+#include <stdbool.h>
+#include "interrupts/idt.h"
 
 static uint64_t bar0;
 
@@ -112,12 +114,58 @@ typedef enum : uint32_t {
 #define CTRL_PHY_RST (1 << 31)
 #pragma endregion
 
-static void write_reg(Register reg, uint32_t value) {
+static inline void write_reg(Register reg, uint32_t value) {
 	*(volatile uint32_t*) (bar0 + reg) = value;
 }
 
-static uint32_t read_reg(Register reg) {
+static inline uint32_t read_reg(Register reg) {
 	return *(volatile uint32_t*) (bar0 + reg);
+}
+
+static __attribute__((interrupt)) void net_int(InterruptFrame* frame);
+
+#define EERD_START (1 << 0)
+#define EERD_DONE (1 << 1)
+
+static uint16_t read_eeprom(uint8_t addr) {
+	// start
+	uint32_t tmp = EERD_START | (uint32_t) addr << 2;
+
+	write_reg(REG_EERD, tmp);
+
+	while ((read_reg(REG_EERD) & EERD_DONE) == 0) __asm__ volatile("pause" : : : "memory");
+
+	uint16_t data = read_reg(REG_EERD) >> 16;
+
+	tmp = read_reg(REG_EERD) & ~EERD_START;
+	write_reg(REG_EERD, tmp);
+
+	return data;
+}
+
+#define EEC_SK (1 << 0)
+#define EEC_CS (1 << 1)
+#define EEC_DI (1 << 2)
+#define EEC_REQ (1 << 6)
+#define EEC_GNT (1 << 7)
+
+static inline void lock_eeprom() {
+	uint32_t eec = read_reg(REG_EEC);
+	eec |= EEC_REQ;
+	write_reg(REG_EEC, eec);
+
+	while ((read_reg(REG_EEC) & EEC_GNT) == 0) {
+		if (eec != read_reg(REG_EEC)) {
+			printf("new value: 0x%h\n", read_reg(REG_EEC));
+		}
+		__asm__ volatile("pause" : : : "memory");
+	}
+}
+
+static inline void unlock_eeprom() {
+	uint32_t eec = read_reg(REG_EEC);
+	eec &= ~EEC_REQ;
+	write_reg(REG_EEC, eec);
 }
 
 void initialize_intel_82574(PCIDeviceHeader0* header) {
@@ -159,5 +207,53 @@ void initialize_intel_82574(PCIDeviceHeader0* header) {
 
 	write_reg(REG_IMC, 1);
 
-	
+	write_reg(REG_GCR, read_reg(REG_GCR) | 1 << 22);
+
+	if ((read_reg(REG_EEC) & 1 << 8) == 0) {
+		printf("intel 82574: no nvm present\n");
+		return;
+	}
+
+	uint8_t offset = header->capabilities_pointer & 0b11111100;
+	while (true) {
+		uint8_t id = *(uint8_t*) ((uintptr_t) header + offset);
+		if (id == PCI_CAP_MSI) {
+			PciMsiCapability* msi = (PciMsiCapability*) ((uintptr_t) header + offset);
+			msi->msg_data = NETWORK_CONTROLLER_0_INT; // interrupt vector
+			// address + cpu
+			msi->msg_addr = 0xFEE00000 | 0 << 12;
+			msi->msg_control |= MSI_CTRL_ENABLE;
+			if ((msi->msg_control & MSI_CTRL_MM_CAPABLE) != MSI_CTRL_MM_1_CAPABLE) {
+				printf("intel 82574: requesting more than 1 interrupt, allocating only one.\n");
+			}
+			msi->msg_control |= MSI_CTRL_MM_1_ENABLE;
+			break;
+		}
+		uint8_t next = *(uint8_t*) ((uintptr_t) header + offset + 1);
+		offset = next;
+		if (!next) break;
+	}
+
+	register_interrupt(NETWORK_CONTROLLER_0_INT, net_int, INTERRUPT_TYPE_INTERRUPT);
+
+	// enable eeprom
+	uint32_t eec = read_reg(REG_EEC);
+	eec |= EEC_SK | EEC_CS | EEC_DI;
+	write_reg(REG_EEC, eec);
+
+	printf("locking eeprom for mac read\n");
+
+	lock_eeprom();
+	printf("eeprom locked\n");
+	uint8_t mac_addr[6];
+	*(uint16_t*) &mac_addr[0] = read_eeprom(0x0);
+	*(uint16_t*) &mac_addr[2] = read_eeprom(0x1);
+	*(uint16_t*) &mac_addr[4] = read_eeprom(0x2);
+	unlock_eeprom();
+
+	printf("mac address: %h %h %h %h %h %h",
+		   mac_addr[0], mac_addr[1], mac_addr[2],
+		   mac_addr[3], mac_addr[4], mac_addr[5]);
 }
+
+static __attribute__((interrupt)) void net_int(InterruptFrame* frame) {}

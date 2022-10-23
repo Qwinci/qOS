@@ -31,6 +31,7 @@ typedef struct {
 	uintptr_t base;
 	uint32_t interrupt_base;
 	uint8_t irq_count;
+	uint32_t used_irqs;
 } IoApic;
 
 typedef struct {
@@ -45,7 +46,7 @@ static uint8_t io_apic_count = 0;
 static IrqOverride irq_overrides[16] = {};
 
 typedef struct {
-	uintptr_t io_apic_base;
+	uint8_t io_apic_index;
 	uint8_t io_apic_entry;
 	uint8_t active_low;
 	uint8_t level_triggered;
@@ -58,8 +59,8 @@ static inline IsaIrqRedirectionEntryInfo get_io_apic_info_for_isa_irq(uint8_t ir
 			if (io_apic_list[i].interrupt_base <= override.global_base) {
 				if (override.global_base - io_apic_list[i].interrupt_base < io_apic_list[i].irq_count) {
 					return (IsaIrqRedirectionEntryInfo) {
-						io_apic_list[i].base,
-						override.global_base - io_apic_list[i].interrupt_base};
+						.io_apic_index = i,
+						.io_apic_entry = override.global_base - io_apic_list[i].interrupt_base};
 				}
 			}
 		}
@@ -86,8 +87,9 @@ static inline void write_io_apic_isa_redirection_entry(uint8_t irq, IoApicRedire
 	e |= (uint64_t) entry.mask << 16;
 	e |= (uint64_t) entry.destination << 56;
 
-	write_io_apic_register(info.io_apic_base, 0x10 + info.io_apic_entry * 2, e & 0xFFFFFFFF);
-	write_io_apic_register(info.io_apic_base, 0x10 + info.io_apic_entry * 2 + 1, e >> 32);
+	write_io_apic_register(io_apic_list[info.io_apic_index].base, 0x10 + info.io_apic_entry * 2, e & 0xFFFFFFFF);
+	write_io_apic_register(io_apic_list[info.io_apic_index].base, 0x10 + info.io_apic_entry * 2 + 1, e >> 32);
+	io_apic_list[info.io_apic_index].used_irqs |= 1 << info.io_apic_entry;
 }
 
 void register_io_apic_redirection_entry(uint8_t io_apic_irq, IoApicRedirectionEntry entry) {
@@ -100,15 +102,31 @@ void register_io_apic_redirection_entry(uint8_t io_apic_irq, IoApicRedirectionEn
 	e |= (uint64_t) entry.destination << 56;
 
 	for (uint8_t i = 0; i < io_apic_count; ++i) {
-		IoApic io_apic = io_apic_list[i];
-		if (io_apic.interrupt_base <= io_apic_irq) {
-			write_io_apic_register(io_apic.base, 0x10 + io_apic_irq * 2, e & 0xFFFFFFFF);
-			write_io_apic_register(io_apic.base, 0x10 + io_apic_irq * 2 + 1, e >> 32);
-			return;
+		IoApic* io_apic = &io_apic_list[i];
+		if (io_apic->interrupt_base <= io_apic_irq) {
+			if (io_apic_irq - io_apic->interrupt_base < io_apic->irq_count) {
+				write_io_apic_register(io_apic->base, 0x10 + (io_apic_irq - io_apic->interrupt_base) * 2, e & 0xFFFFFFFF);
+				write_io_apic_register(io_apic->base, 0x10 + (io_apic_irq - io_apic->interrupt_base) * 2 + 1, e >> 32);
+				io_apic->used_irqs |= 1 << io_apic_irq;
+				return;
+			}
 		}
 	}
 
 	__builtin_unreachable();
+}
+
+bool io_apic_is_entry_free(uint8_t io_apic_irq) {
+	for (uint8_t i = 0; i < io_apic_count; ++i) {
+		IoApic* io_apic = &io_apic_list[i];
+		if (io_apic->interrupt_base <= io_apic_irq) {
+			if (io_apic_irq - io_apic->interrupt_base < io_apic->irq_count) {
+				if (io_apic->used_irqs & 1 << io_apic_irq) return false;
+				else return true;
+			}
+		}
+	}
+	return false;
 }
 
 extern char smp_trampoline_start[];
@@ -117,17 +135,13 @@ extern char smp_trampoline_end[];
 static uint8_t ap_lapic_ids[16];
 static uint8_t ap_lapic_count = 0;
 
-static inline void mdelay(uint16_t count) {
-	for (uint64_t i = 0; i < (uint64_t) count * 1000; ++i) io_wait();
-}
-
-static inline void udelay(uint8_t count) {
-	for (uint8_t i = 0; i < count; ++i) io_wait();
-}
-
-_Noreturn void ap_entry() {
-	printf("hello from ap!\n");
+static _Noreturn void ap_entry(uint8_t apic_id) {
+	printf("hello from ap %u8!\n", apic_id);
 	while (true) __asm__ volatile("hlt");
+}
+
+void usleep(uint32_t us) {
+	for (uint32_t i = 0; i < us; ++i) io_wait();
 }
 
 uint8_t bsp_apic_id = 0;
@@ -187,7 +201,8 @@ void initialize_apic(void* rsdp) {
 
 				io_apic_list[io_apic_count++] = (IoApic)
 						{.base = io_apic_address + 0xFFFF800000000000,
-						 .interrupt_base = global_system_interrupt_base};
+						 .interrupt_base = global_system_interrupt_base,
+						 .used_irqs = 0};
 				break;
 			}
 			case 2: // io apic interrupt source override
@@ -279,4 +294,84 @@ void initialize_apic(void* rsdp) {
 	// enable lapic and set spurious interrupt vector to 0xFF
 	lapic_write(LAPIC_REG_SPURIOUS_INTERRUPT_VEC, 0xFF | 0x100);
 	lapic_write(LAPIC_REG_TASK_PRIORITY, 0);
+
+	const uint32_t DEST_MODE_INIT = 5 << 8;
+	const uint32_t DEST_MODE_SIPI = 6 << 8;
+	const uint32_t DELIVERY_STATUS = 1 << 12;
+	const uint32_t INIT_DEASSERT_CLEAR = 1 << 14;
+	const uint32_t INIT_DEASSERT = 1 << 15;
+
+	memcpy(
+			(void*) (0xFFFF800000000000 + 0x1000),
+			smp_trampoline_start,
+			(size_t) (smp_trampoline_end - smp_trampoline_start));
+
+	extern uint64_t* pml4;
+
+	typedef struct {
+		uint8_t flag;
+		uint32_t page_table;
+		uint8_t apic_id;
+		uint64_t entry;
+		uint64_t stack;
+	} __attribute__((packed)) InitInfo;
+
+	InitInfo* info = (InitInfo*) (0xFFFF800000000000 + 0x2000);
+	info->flag = 0;
+	info->page_table = (uint32_t) (uintptr_t) pml4;
+	info->entry = (uint64_t) ap_entry;
+
+	extern char debug;
+	debug = 1;
+
+	pmap(0x1000, 0x1000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	pmap(0x2000, 0x2000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	debug = 0;
+	printf("ap init begin\n");
+	for (uint8_t a = 0; a < ap_lapic_count; ++a) {
+		uint32_t value = DEST_MODE_INIT | INIT_DEASSERT_CLEAR;
+		uint32_t ap = ap_lapic_ids[a];
+		info->apic_id = ap;
+		info->stack = (uint64_t) pmalloc(8, MEMORY_ALLOC_TYPE_NORMAL) + 0x8000;
+
+		// init
+		printf("ap init\n");
+		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE + 0x10, ap << 24);
+		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE, value);
+		while (lapic_read(LAPIC_REG_INTERRUPT_CMD_BASE) & DELIVERY_STATUS) __asm__ volatile("pause" : : : "memory");
+
+		printf("ap deassert\n");
+		// init deassert
+		value = DEST_MODE_INIT | INIT_DEASSERT;
+		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE + 0x10, ap << 24);
+		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE, value);
+		while (lapic_read(LAPIC_REG_INTERRUPT_CMD_BASE) & DELIVERY_STATUS) __asm__ volatile("pause" : : : "memory");
+
+		// wait 10ms
+		usleep(1000 * 10);
+
+		// startup ipi
+		printf("ap startup\n");
+		for (uint8_t i = 0; i < 2; ++i) {
+			// starting at 0x1000
+			value = 1 | DEST_MODE_SIPI | INIT_DEASSERT_CLEAR;
+			lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE + 0x10, ap << 24);
+			lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE, value);
+
+			// wait 200us
+			usleep(i == 0 ? 1000 : 1000 * 1000);
+
+			while (lapic_read(LAPIC_REG_INTERRUPT_CMD_BASE) & DELIVERY_STATUS) __asm__ volatile("pause" : : : "memory");
+
+			if (info->flag) {
+				break;
+			}
+		}
+
+		if (info->flag) {
+			printf("ap startup success\n");
+			info->flag = 0;
+		}
+		else pfree((void*) info->stack, 8);
+	}
 }

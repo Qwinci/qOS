@@ -1,8 +1,8 @@
 #include "memory.h"
 
 void* memset(void* dest, int ch, size_t count) {
-	for (size_t i = 0; i < count; ++i, ++dest) {
-		*(unsigned char*) dest = (unsigned char) ch;
+	for (size_t i = 0; i < count; ++i) {
+		*((unsigned char*) dest + i) = (unsigned char) ch;
 	}
 	return dest;
 }
