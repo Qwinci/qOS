@@ -214,25 +214,15 @@ void initialize_intel_82574(PCIDeviceHeader0* header) {
 		return;
 	}
 
-	uint8_t offset = header->capabilities_pointer & 0b11111100;
-	while (true) {
-		uint8_t id = *(uint8_t*) ((uintptr_t) header + offset);
-		if (id == PCI_CAP_MSI) {
-			PciMsiCapability* msi = (PciMsiCapability*) ((uintptr_t) header + offset);
-			msi->msg_data = NETWORK_CONTROLLER_0_INT; // interrupt vector
-			// address + cpu
-			msi->msg_addr = 0xFEE00000 | 0 << 12;
-			msi->msg_control |= MSI_CTRL_ENABLE;
-			if ((msi->msg_control & MSI_CTRL_MM_CAPABLE) != MSI_CTRL_MM_1_CAPABLE) {
-				printf("intel 82574: requesting more than 1 interrupt, allocating only one.\n");
-			}
-			msi->msg_control |= MSI_CTRL_MM_1_ENABLE;
-			break;
-		}
-		uint8_t next = *(uint8_t*) ((uintptr_t) header + offset + 1);
-		offset = next;
-		if (!next) break;
+	PciMsiCapability* msi = pci_get_msi_cap0(header);
+	msi->msg_data = NETWORK_CONTROLLER_0_INT; // interrupt vector
+	// address + cpu
+	msi->msg_addr = 0xFEE00000 | 0 << 12;
+	msi->msg_control |= MSI_CTRL_ENABLE;
+	if ((msi->msg_control & MSI_CTRL_MM_CAPABLE) != MSI_CTRL_MM_1_CAPABLE) {
+		printf("intel 82574: requesting more than 1 interrupt, allocating only one.\n");
 	}
+	msi->msg_control |= MSI_CTRL_MM_1_ENABLE;
 
 	register_interrupt(NETWORK_CONTROLLER_0_INT, net_int, INTERRUPT_TYPE_INTERRUPT);
 

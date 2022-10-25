@@ -12,5 +12,6 @@ typedef struct InterruptFrame InterruptFrame;
 
 void initialize_interrupts();
 void register_interrupt(uint8_t index, void* handler, InterruptType type);
+const uint8_t* get_free_interrupt_index();
 
 #define NETWORK_CONTROLLER_0_INT 0xFE

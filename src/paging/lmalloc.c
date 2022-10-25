@@ -1,4 +1,3 @@
-#include "malloc.h"
 #include "paging/memory.h"
 #include "stdio.h"
 
@@ -90,13 +89,13 @@ static void* free_list_get(size_t index) {
 
 	if (!list->root) {
 		if (index == 8) {
-			void* memory = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
+			void* memory = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
 			void* returned_block = memory;
 			list->root = (Node*) ((uintptr_t) returned_block + 0x1000);
 			return returned_block;
 		}
 		else {
-			void* blocks = pmalloc(1, MEMORY_ALLOC_TYPE_NORMAL);
+			void* blocks = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
 			void* list_blocks = (void*) ((uintptr_t) blocks + index_to_size(index));
 			list->root = (Node*) list_blocks;
 			list_blocks = (void*) ((uintptr_t) list_blocks + index_to_size(index));
@@ -118,25 +117,19 @@ static void* free_list_get(size_t index) {
 	}
 }
 
-void* malloc(size_t size) {
+void* lmalloc(size_t size) {
 	size_t index = get_size_index(size);
 	if (index == 9) {
-		void* mem = pmalloc((size - 1 + 0x1000 + sizeof(size_t)) / 0x1000, MEMORY_ALLOC_TYPE_NORMAL);
-		printf("malloc: 0x%h\n", mem);
+		void* mem = pmalloc((size - 1 + 0x1000 + sizeof(size_t)) / 0x1000, MEMORY_ALLOC_TYPE_LOW);
 		return mem;
 	}
-	else {
-		void* ptr = free_list_get(index);
-		printf("malloc: 0x%h\n", ptr);
-		return ptr;
-	}
+	else return free_list_get(index);
 }
 
-void free(void* ptr, size_t size) {
+void lfree(void* ptr, size_t size) {
 	size_t index = get_size_index(size);
 	if (index == 9) {
 		pfree(ptr, (size - 1 + 0x1000 + sizeof(size_t)) / 0x1000);
 	}
 	else free_list_insert(index, ptr);
-	printf("free: 0x%h\n", ptr);
 }

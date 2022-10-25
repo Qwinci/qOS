@@ -8,13 +8,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 set(CMAKE_C_STANDARD 23)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.c src/*.h src/*.asm)
+file(GLOB_RECURSE LAI_SRC thirdparty/lai/*.c)
 
-add_executable(qos ${SRC})
+add_executable(qos ${SRC} ${LAI_SRC})
 target_compile_options(qos PRIVATE
         $<$<COMPILE_LANGUAGE:C>: -Wall -fno-stack-protector -fpic -mabi=sysv -mno-80387 -mno-mmx -mgeneral-regs-only
         -fpic -mno-3dnow -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -fno-builtin-printf -masm=intel -gdwarf-4
-        -fno-omit-frame-pointer -fno-builtin-free -Wno-fortify-source>)
-target_include_directories(qos PRIVATE src thirdparty src/std)
+        -fno-omit-frame-pointer -fno-builtin-free -Wno-fortify-source -Wno-interrupt-service-routine>)
+target_include_directories(qos PRIVATE src thirdparty src/std thirdparty/lai/include)
 target_link_options(qos PRIVATE -fPIE -z max-page-size=0x1000 -T ${PROJECT_SOURCE_DIR}/kernel.ld -nostdlib -static)
 add_custom_command(TARGET qos POST_BUILD
         COMMAND mkdir -p ${PROJECT_BINARY_DIR}/iso_root
@@ -56,7 +57,7 @@ add_custom_target(run_kvm
 add_custom_target(run
         COMMAND qemu-system-x86_64 -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         -m 4G -machine q35 -cpu qemu64 -smp 2 -d int -no-reboot -no-shutdown
-        -device ich9-usb-uhci1 -device sb16
+        -device ich9-usb-uhci1 -device usb-kbd -device sb16
         DEPENDS qos
         USES_TERMINAL VERBATIM)
 add_custom_target(debug

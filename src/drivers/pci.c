@@ -5,6 +5,7 @@
 #include "paging/memory.h"
 #include "pci_device_db.h"
 #include "intel_82574.h"
+#include "usb.h"
 
 typedef struct {
 	SDTHeader header;
@@ -22,17 +23,6 @@ typedef struct {
 } PCIEntry;
 
 static_assert(sizeof(PCIEntry) == 16);
-
-#define PCI_CMD_IO_SPACE (1 << 0)
-#define PCI_CMD_MEM_SPACE (1 << 1)
-#define PCI_CMD_BUS_MASTER (1 << 2)
-#define PCI_CMD_SPECIAL_CYCLES (1 << 3)
-#define PCI_CMD_MEM_WRITE_AND_INVALIDATE (1 << 4)
-#define PCI_CMD_VGA_PALETTE_SNOOP (1 << 5)
-#define PCI_CMD_PARITY_ERROR_RESPONSE (1 << 6)
-#define PCI_CMD_SERR_ENABLE (1 << 8)
-#define PCI_CMD_FAST_BACK_BACK_ENABLE (1 << 9)
-#define PCI_CMD_INTERRUPT_DISABLE (1 << 10)
 
 void enumerate_function(uintptr_t base, uint8_t function) {
 	uintptr_t address = base + ((uintptr_t) function << 12);
@@ -70,10 +60,26 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 
 	PCIDeviceHeader0* header0 = (PCIDeviceHeader0*) header;
 
-	if (header->vendor_id == 0x8086 && header->device_id == 0x10D3) {
+	/*if (header->vendor_id == 0x8086 && header->device_id == 0x10D3) {
 		// intel 82574L gigabit network connection
 		header->command |= PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE | PCI_CMD_BUS_MASTER;
 		initialize_intel_82574(header0);
+	}*/
+	// usb controller
+	if (header->class == 0xC && header->subclass == 0x3) {
+		// 0x0 = UHCI, 0x10 = OHCI, 0x20 = EHCI, 0x30 = XHCI
+		if (header->prog_if == 0x0) {
+			initialize_usb_uhci(header0);
+		}
+		else if (header->prog_if == 0x10) {
+
+		}
+		else if (header->prog_if == 0x20) {
+
+		}
+		else if (header->prog_if >= 0x30 && header->prog_if < 0x40) {
+
+		}
 	}
 }
 
@@ -93,6 +99,14 @@ void enumerate_device(uintptr_t base, uint8_t slot) {
 	uint8_t max_function = 8;
 	if ((header->header_type & 1 << 7) == 0) {
 		max_function = 1;
+	}
+
+	// usb controller
+	if (header->class == 0xC && header->subclass == 0x3) {
+		for (int8_t function = (int8_t) (max_function - 1); function >= 0; --function) {
+			enumerate_function(address, function);
+		}
+		return;
 	}
 
 	for (uint8_t function = 0; function < max_function; ++function) {
@@ -118,17 +132,69 @@ void enumerate_bus(uintptr_t base, uint8_t bus) {
 	}
 }
 
-void initialize_pci(void* rsdp) {
-	MCFG* mcfg = (MCFG*) locate_acpi_table(rsdp, "MCFG");
+static MCFG* mcfg;
+
+bool initialize_pci(void* rsdp) {
+	mcfg = (MCFG*) locate_acpi_table(rsdp, "MCFG");
 	if (!mcfg) {
 		printf("failed to locate MCFG table\n");
-		return;
+		return false;
 	}
+	return true;
+}
 
+void enumerate_pci() {
 	for (size_t i = 0; i < mcfg->header.length - sizeof(MCFG); i += sizeof(PCIEntry)) {
 		PCIEntry* entry = (PCIEntry*) ((uintptr_t) mcfg + sizeof(MCFG) + i);
 		for (uint8_t bus = entry->start_bus; bus < entry->end_bus; ++bus) {
 			enumerate_bus(entry->base + 0xFFFF800000000000, bus);
 		}
 	}
+}
+
+PCIDeviceHeader* pci_get_dev_header(uint16_t seg, uint8_t bus, uint8_t slot, uint8_t fun) {
+	for (size_t i = 0; i < mcfg->header.length - sizeof(MCFG); i += sizeof(PCIEntry)) {
+		PCIEntry* entry = (PCIEntry*) ((uintptr_t) mcfg + sizeof(MCFG) + i);
+		if (entry->segment_group == seg) {
+			PCIDeviceHeader* header = (PCIDeviceHeader*)
+					(entry->base + 0xFFFF800000000000 +
+							((uintptr_t) bus << 20) +
+							((uintptr_t) slot << 15) +
+							((uintptr_t) fun << 12));
+			return header;
+		}
+	}
+	return NULL;
+}
+
+PciMsiCapability* pci_get_msi_cap0(PCIDeviceHeader0* header) {
+	if ((header->header.status & 1 << 4) == 0) return NULL;
+	uint8_t offset = header->capabilities_pointer & 0b11111100;
+	while (true) {
+		uint8_t id = *(uint8_t*) ((uintptr_t) header + offset);
+		if (id == PCI_CAP_MSI) {
+			PciMsiCapability* msi = (PciMsiCapability*) ((uintptr_t) header + offset);
+			return msi;
+		}
+		uint8_t next = *(uint8_t*) ((uintptr_t) header + offset + 1);
+		offset = next;
+		if (!next) break;
+	}
+	return NULL;
+}
+
+PciPmCapability* pci_get_pm_cap0(PCIDeviceHeader0* header) {
+	if ((header->header.status & 1 << 4) == 0) return NULL;
+	uint8_t offset = header->capabilities_pointer & 0b11111100;
+	while (true) {
+		uint8_t id = *(uint8_t*) ((uintptr_t) header + offset);
+		if (id == PCI_CAP_PM) {
+			PciPmCapability* pm = (PciPmCapability*) ((uintptr_t) header + offset);
+			return pm;
+		}
+		uint8_t next = *(uint8_t*) ((uintptr_t) header + offset + 1);
+		offset = next;
+		if (!next) break;
+	}
+	return NULL;
 }

@@ -74,7 +74,7 @@ static inline IsaIrqRedirectionEntryInfo get_io_apic_info_for_isa_irq(uint8_t ir
 	__builtin_unreachable();
 }
 
-static inline void write_io_apic_isa_redirection_entry(uint8_t irq, IoApicRedirectionEntry entry) {
+void write_io_apic_isa_redirection_entry(uint8_t irq, IoApicRedirectionEntry entry) {
 	IsaIrqRedirectionEntryInfo info = get_io_apic_info_for_isa_irq(irq);
 
 	uint64_t e = entry.vector;
@@ -129,16 +129,28 @@ bool io_apic_is_entry_free(uint8_t io_apic_irq) {
 	return false;
 }
 
+uint8_t* io_apic_get_free_irq() {
+	static uint8_t irq;
+	for (uint8_t i = 0; i < io_apic_count; ++i) {
+		IoApic* io_apic = &io_apic_list[i];
+		if (io_apic->interrupt_base != 0) continue;
+		for (uint8_t i2 = 0; i2 < io_apic->irq_count; ++i2) {
+			if ((io_apic->used_irqs & 1 << i2) == 0) {
+				irq = i2;
+				return &irq;
+			}
+		}
+	}
+	return NULL;
+}
+
 extern char smp_trampoline_start[];
 extern char smp_trampoline_end[];
 
 static uint8_t ap_lapic_ids[16];
 static uint8_t ap_lapic_count = 0;
 
-static _Noreturn void ap_entry(uint8_t apic_id) {
-	printf("hello from ap %u8!\n", apic_id);
-	while (true) __asm__ volatile("hlt");
-}
+extern _Noreturn void ap_entry(uint8_t apic_id);
 
 void usleep(uint32_t us) {
 	for (uint32_t i = 0; i < us; ++i) io_wait();
@@ -187,7 +199,9 @@ void initialize_apic(void* rsdp) {
 				uint32_t flags2 = *(uint32_t*) (madt + i);
 				i += 4;
 
-				if (apic_id != bsp_id) ap_lapic_ids[ap_lapic_count++] = apic_id;
+				if (flags2 & 1 || (flags & 1 << 1)) {
+					if (apic_id != bsp_id) ap_lapic_ids[ap_lapic_count++] = apic_id;
+				}
 				break;
 			}
 			case 1: // io apic
@@ -301,10 +315,23 @@ void initialize_apic(void* rsdp) {
 	const uint32_t INIT_DEASSERT_CLEAR = 1 << 14;
 	const uint32_t INIT_DEASSERT = 1 << 15;
 
+	size_t trampoline_size = (size_t) (smp_trampoline_end - smp_trampoline_start);
+	void* trampoline = (void*) (0xFFFF800000000000 + 0x1000);
+	uintptr_t trampoline_phys = (uintptr_t) trampoline - 0xFFFF800000000000;
+
+	pmap(
+			trampoline_phys,
+			(uintptr_t) trampoline,
+			PAGEFLAG_PRESENT | PAGEFLAG_RW);
+	pmap(
+			trampoline_phys,
+			trampoline_phys,
+			PAGEFLAG_PRESENT | PAGEFLAG_RW);
+
 	memcpy(
-			(void*) (0xFFFF800000000000 + 0x1000),
+			trampoline,
 			smp_trampoline_start,
-			(size_t) (smp_trampoline_end - smp_trampoline_start));
+			trampoline_size);
 
 	extern uint64_t* pml4;
 
@@ -316,18 +343,11 @@ void initialize_apic(void* rsdp) {
 		uint64_t stack;
 	} __attribute__((packed)) InitInfo;
 
-	InitInfo* info = (InitInfo*) (0xFFFF800000000000 + 0x2000);
+	InitInfo* info = (InitInfo*) ((uintptr_t) trampoline + trampoline_size);
 	info->flag = 0;
 	info->page_table = (uint32_t) (uintptr_t) pml4;
 	info->entry = (uint64_t) ap_entry;
 
-	extern char debug;
-	debug = 1;
-
-	pmap(0x1000, 0x1000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-	pmap(0x2000, 0x2000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-	debug = 0;
-	printf("ap init begin\n");
 	for (uint8_t a = 0; a < ap_lapic_count; ++a) {
 		uint32_t value = DEST_MODE_INIT | INIT_DEASSERT_CLEAR;
 		uint32_t ap = ap_lapic_ids[a];
@@ -335,12 +355,10 @@ void initialize_apic(void* rsdp) {
 		info->stack = (uint64_t) pmalloc(8, MEMORY_ALLOC_TYPE_NORMAL) + 0x8000;
 
 		// init
-		printf("ap init\n");
 		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE + 0x10, ap << 24);
 		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE, value);
 		while (lapic_read(LAPIC_REG_INTERRUPT_CMD_BASE) & DELIVERY_STATUS) __asm__ volatile("pause" : : : "memory");
 
-		printf("ap deassert\n");
 		// init deassert
 		value = DEST_MODE_INIT | INIT_DEASSERT;
 		lapic_write(LAPIC_REG_INTERRUPT_CMD_BASE + 0x10, ap << 24);
@@ -351,7 +369,6 @@ void initialize_apic(void* rsdp) {
 		usleep(1000 * 10);
 
 		// startup ipi
-		printf("ap startup\n");
 		for (uint8_t i = 0; i < 2; ++i) {
 			// starting at 0x1000
 			value = 1 | DEST_MODE_SIPI | INIT_DEASSERT_CLEAR;
@@ -369,9 +386,8 @@ void initialize_apic(void* rsdp) {
 		}
 
 		if (info->flag) {
-			printf("ap startup success\n");
 			info->flag = 0;
 		}
-		else pfree((void*) info->stack, 8);
+		else pfree((void*) (info->stack - 0x8000), 8);
 	}
 }

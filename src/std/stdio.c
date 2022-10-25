@@ -5,6 +5,7 @@
 #include "boot_info.h"
 #include <stdbool.h>
 #include "string.h"
+#include <stdatomic.h>
 
 typedef struct {
 	Framebuffer* fb;
@@ -81,7 +82,12 @@ static inline void put_string(const char* str) {
 	}
 }
 
+static atomic_flag lock = ATOMIC_FLAG_INIT;
+
 void printf(const char* fmt, ...) {
+	static char expected = 0;
+	while (atomic_flag_test_and_set_explicit(&lock, memory_order_acquire))
+		__asm__ volatile("pause" : : : "memory");
 	va_list valist;
 	va_start(valist, fmt);
 	for (; *fmt; ++fmt) {
@@ -193,4 +199,5 @@ void printf(const char* fmt, ...) {
 	}
 
 	va_end(valist);
+	atomic_flag_clear_explicit(&lock, memory_order_release);
 }

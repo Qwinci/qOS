@@ -103,11 +103,14 @@ void* pmalloc(size_t count, MemoryAllocType type) {
 	bool start_from_root = type == MEMORY_ALLOC_TYPE_LOW;
 	Node* node = start_from_root ? root : end;
 
+	extern size_t p_offset;
+
 	if (!node) return NULL;
 	do {
 		if (node->size >= count) {
 			size_t remaining = node->size - count;
 			if (start_from_root) {
+				if ((uintptr_t) node - p_offset > 0xFFFFFFFF) return NULL;
 				if (remaining == 0) {
 					remove_node(node, &root, &end);
 					return (void*) node;
@@ -147,8 +150,12 @@ extern size_t p_offset;
 
 void initialize_memory(const BootInfo* boot_info) {
 	for (size_t i = 0; i < boot_info->memory_map.entry_count; ++i) {
-		const MemoryEntry* entry = boot_info->memory_map.entries[i];
+		MemoryEntry* entry = boot_info->memory_map.entries[i];
 		if (entry->type == MEMORYTYPE_USABLE) {
+			if (entry->base == 0x1000) {
+				entry->base += 0x1000;
+				entry->size -= 0x1000;
+			}
 			add_memory((void*) entry->base, entry->size);
 		}
 	}

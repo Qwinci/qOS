@@ -70,5 +70,7 @@ typedef struct {
 
 void register_io_apic_redirection_entry(uint8_t io_apic_irq, IoApicRedirectionEntry entry);
 bool io_apic_is_entry_free(uint8_t io_apic_irq);
+uint8_t* io_apic_get_free_irq();
+void write_io_apic_isa_redirection_entry(uint8_t irq, IoApicRedirectionEntry entry);
 
 extern uint8_t bsp_apic_id;

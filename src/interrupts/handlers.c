@@ -8,11 +8,11 @@
 #include "utils/io.h"
 
 typedef struct InterruptFrame {
-	uint16_t ip;
-	uint16_t cs;
-	uint16_t flags;
-	uint16_t sp;
-	uint16_t ss;
+	uint64_t ip;
+	uint64_t cs;
+	uint64_t flags;
+	uint64_t sp;
+	uint64_t ss;
 } InterruptFrame;
 
 #define PS2_DATA_PORT 0x60

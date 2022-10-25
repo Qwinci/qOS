@@ -2,7 +2,7 @@
 global smp_trampoline_start
 global smp_trampoline_end
 
-%define INFO_START 0x2000
+%define INFO_START smp_trampoline_end - smp_trampoline_start + 0x1000
 
 struc BootInfo
 	.done: resb 1
@@ -43,7 +43,6 @@ smp_trampoline_start:
 	lgdt [gdt.ptr - smp_trampoline_start + 0x1000]
 
 	jmp 0x8:long_mode - smp_trampoline_start + 0x1000
-
 gdt:
 	.null: dq 0
 	.kernel_code:

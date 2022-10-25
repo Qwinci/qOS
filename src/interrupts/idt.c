@@ -37,6 +37,8 @@ void register_interrupt(uint8_t index, void* handler, InterruptType type) {
 	descriptor->zero = 0;
 }
 
+static uint8_t interrupts[256] = {};
+
 void initialize_interrupts() {
 	__asm__("cli");
 	load_gdt();
@@ -51,6 +53,21 @@ void initialize_interrupts() {
 	register_interrupt(0x20, keyboard_interrupt, INTERRUPT_TYPE_INTERRUPT);
 	register_interrupt(0x21, sb16_interrupt, INTERRUPT_TYPE_INTERRUPT);
 
+	for (uint8_t i = 0; i < 0x30; ++i) {
+		interrupts[i] = 1;
+	}
+
 	__asm__("lidt %0" : : "m"(idtr));
 	__asm__("sti");
+}
+
+const uint8_t* get_free_interrupt_index() {
+	static uint8_t interrupt;
+	for (uint16_t i = 0; i < 256; ++i) {
+		if (!interrupts[i]) {
+			interrupt = i;
+			return &interrupt;
+		}
+	}
+	return NULL;
 }
