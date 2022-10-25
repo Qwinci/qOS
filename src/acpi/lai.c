@@ -34,9 +34,13 @@ void* laihost_malloc(size_t size) {
 	return malloc(size);
 }
 
-void* laihost_realloc(void* ptr, size_t old_size, size_t new_size) {
-	void* data = malloc(new_size);
-	memcpy(data, ptr, old_size < new_size ? old_size : new_size);
+void* laihost_realloc(void* ptr, size_t new_size, size_t old_size) {
+	void* data = NULL;
+	if (new_size > 0) {
+		data = malloc(new_size);
+		memcpy(data, ptr, old_size < new_size ? old_size : new_size);
+	}
+
 	if (ptr) free(ptr, old_size);
 	return data;
 }

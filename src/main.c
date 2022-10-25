@@ -19,10 +19,9 @@ __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 		while (true) __asm__ volatile("hlt");
 	}
 
-	lai_host_init(boot_info.rsdp);
-
 	initialize_apic(boot_info.rsdp);
 	initialize_timers(boot_info.rsdp);
+	lai_host_init(boot_info.rsdp);
 	//enumerate_pci();
 
 	//if (initialize_sb16()) printf("sb16 initialized\n");
@@ -30,6 +29,7 @@ __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 	printf("hello world\n");
 
 	lai_enter_sleep(5);
+	printf("shutdown didn't work\n");
 
 	while (true) __asm__("hlt");
 }

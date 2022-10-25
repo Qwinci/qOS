@@ -77,7 +77,6 @@ void* locate_nth_acpi_table(void* rsdp, const char* signature, size_t index) {
 		for (size_t i = 0; i < entries; ++i) {
 			if (xsdt->pointer[i] == 0) {
 				bad_xsdt = true;
-				printf("[INFO][ACPI] xsdt contains invalid entries. using rsdt\n");
 				break;
 			}
 		}

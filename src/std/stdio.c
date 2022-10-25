@@ -77,7 +77,12 @@ static inline void put_string(const char* str) {
 			state.col = 0;
 			++state.line;
 		}
-		if (state.line * font->height > state.fb->height) break;
+		if (state.line * font->height + font->height > state.fb->height) {
+			// todo scrolling
+			clear_screen(0);
+			state.line = 0;
+			state.col = 0;
+		}
 		put_char(*str, state.col++, state.line);
 	}
 }
@@ -85,7 +90,6 @@ static inline void put_string(const char* str) {
 static atomic_flag lock = ATOMIC_FLAG_INIT;
 
 void printf(const char* fmt, ...) {
-	static char expected = 0;
 	while (atomic_flag_test_and_set_explicit(&lock, memory_order_acquire))
 		__asm__ volatile("pause" : : : "memory");
 	va_list valist;
@@ -193,7 +197,12 @@ void printf(const char* fmt, ...) {
 				state.col = 0;
 				++state.line;
 			}
-			if (state.line * font->height > state.fb->height) break;
+			if (state.line * font->height + font->height > state.fb->height) {
+				// todo scrolling
+				clear_screen(0);
+				state.line = 0;
+				state.col = 0;
+			}
 			put_char(*fmt, state.col++, state.line);
 		}
 	}

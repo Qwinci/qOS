@@ -131,6 +131,7 @@ void* pmalloc(size_t count, MemoryAllocType type) {
 				node->size = remaining;
 				if (node->size == 0) {
 					remove_node(node, &root, &end);
+					return (void*) node;
 				}
 				return (void*) ((uintptr_t) node + remaining * 0x1000);
 			}

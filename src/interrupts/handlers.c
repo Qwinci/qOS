@@ -45,7 +45,7 @@ __attribute__((interrupt)) void page_fault_handler(InterruptFrame* interrupt_fra
 	uint64_t address;
 	__asm__("mov %0, cr2" : "=r"(address));
 	printf("pagefault at address 0x%h\n", address);
-	printf("IP: 0x%h\n", 0xffffffff80000000 + interrupt_frame->ip);
+	printf("IP: 0x%h\n", interrupt_frame->ip);
 	unwind();
 
 	while (true) __asm__("hlt");

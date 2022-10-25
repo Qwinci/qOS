@@ -1,3 +1,4 @@
+#include "malloc.h"
 #include "paging/memory.h"
 #include "stdio.h"
 
@@ -9,7 +10,7 @@ typedef struct {
 	Node* root;
 } FreeList;
 
-// 8 16 32 64 128 248 512 1024 2048
+// 8 16 32 64 128 256 512 1024 2048
 
 static inline const size_t get_size_index(size_t size) {
 	if (size <= 8) return 0;
@@ -17,7 +18,7 @@ static inline const size_t get_size_index(size_t size) {
 	else if (size <= 32) return 2;
 	else if (size <= 64) return 3;
 	else if (size <= 128) return 4;
-	else if (size <= 248) return 5;
+	else if (size <= 256) return 5;
 	else if (size <= 512) return 6;
 	else if (size <= 1024) return 7;
 	else if (size <= 2048) return 8;
@@ -30,7 +31,7 @@ static inline const size_t index_to_size(size_t index) {
 	else if (index == 2) return 32;
 	else if (index == 3) return 64;
 	else if (index == 4) return 128;
-	else if (index == 5) return 248;
+	else if (index == 5) return 256;
 	else if (index == 6) return 512;
 	else if (index == 7) return 1024;
 	else if (index == 8) return 2048;
@@ -91,7 +92,8 @@ static void* free_list_get(size_t index) {
 		if (index == 8) {
 			void* memory = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
 			void* returned_block = memory;
-			list->root = (Node*) ((uintptr_t) returned_block + 0x1000);
+			list->root = (Node*) ((uintptr_t) returned_block + 0x800);
+			list->root->next = NULL;
 			return returned_block;
 		}
 		else {
@@ -112,6 +114,7 @@ static void* free_list_get(size_t index) {
 	}
 	else {
 		Node* node = list->root;
+		if ((uintptr_t) node < 0xFFFF000000000000) printf("list %u8 root: 0x%h\n", index, node);
 		list->root = list->root->next;
 		return node;
 	}
@@ -120,16 +123,19 @@ static void* free_list_get(size_t index) {
 void* lmalloc(size_t size) {
 	size_t index = get_size_index(size);
 	if (index == 9) {
-		void* mem = pmalloc((size - 1 + 0x1000 + sizeof(size_t)) / 0x1000, MEMORY_ALLOC_TYPE_LOW);
+		void* mem = pmalloc((size - 1 + 0x1000) / 0x1000, MEMORY_ALLOC_TYPE_LOW);
 		return mem;
 	}
-	else return free_list_get(index);
+	else {
+		void* ptr = free_list_get(index);
+		return ptr;
+	}
 }
 
 void lfree(void* ptr, size_t size) {
 	size_t index = get_size_index(size);
 	if (index == 9) {
-		pfree(ptr, (size - 1 + 0x1000 + sizeof(size_t)) / 0x1000);
+		pfree(ptr, (size - 1 + 0x1000) / 0x1000);
 	}
 	else free_list_insert(index, ptr);
 }
