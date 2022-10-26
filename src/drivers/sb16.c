@@ -25,11 +25,11 @@
 #define DSP_MIXER_CMD_SET_VOLUME 0x22
 #define DSP_MIXER_CMD_SET_IRQ 0x80
 
-static inline void udelay(uint8_t count) {
+/*static inline void udelay(uint8_t count) {
 	for (uint8_t i = 0; i < count; ++i) io_wait();
 }
 
-/*extern unsigned char output_raw[];
+extern unsigned char output_raw[];
 extern unsigned int output_raw_len;
 
 uintptr_t sound_data = 0;
@@ -41,7 +41,7 @@ bool initialize_sb16() {
 	udelay(3);
 	out1(DSP_RESET_PORT, 0);
 
-	bool is_good = true;
+	bool is_good = false;
 	for (uint8_t i = 0; i < 150; ++i) {
 		if (in1(DSP_READ_STATUS_PORT) & 1 << 7 && in1(DSP_READ_PORT) == 0xAA) {
 			is_good = true;

@@ -4,3 +4,4 @@
 
 bool initialize_hpet(void* rsdp);
 void hpet_sleep(uint32_t us);
+bool hpet_reselect_irq();

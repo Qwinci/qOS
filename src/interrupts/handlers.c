@@ -25,7 +25,7 @@ __attribute__((interrupt)) void double_fault_handler(InterruptFrame* interrupt_f
 	if (force_reboot) *(volatile uint8_t*) 0 = 0;
 
 	printf("double fault\n");
-	printf("IP: 0x%h\n", 0xffffffff80000000 + interrupt_frame->ip);
+	printf("IP: 0x%h\n", interrupt_frame->ip);
 	unwind();
 
 	while (true) __asm__("hlt");
@@ -33,7 +33,7 @@ __attribute__((interrupt)) void double_fault_handler(InterruptFrame* interrupt_f
 
 __attribute__((interrupt)) void general_protection_fault_handler(InterruptFrame* interrupt_frame, uint64_t error) {
 	printf("general protection fault\n");
-	printf("IP: 0x%h\n", 0xffffffff80000000 + interrupt_frame->ip);
+	printf("IP: 0x%h\n", interrupt_frame->ip);
 	unwind();
 
 	while (true) __asm__("hlt");

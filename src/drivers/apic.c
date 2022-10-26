@@ -121,7 +121,7 @@ bool io_apic_is_entry_free(uint8_t io_apic_irq) {
 		IoApic* io_apic = &io_apic_list[i];
 		if (io_apic->interrupt_base <= io_apic_irq) {
 			if (io_apic_irq - io_apic->interrupt_base < io_apic->irq_count) {
-				if (io_apic->used_irqs & 1 << io_apic_irq) return false;
+				if (io_apic->used_irqs & 1 << (io_apic_irq - io_apic->interrupt_base)) return false;
 				else return true;
 			}
 		}

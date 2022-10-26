@@ -27,8 +27,8 @@ __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 
 	printf("hello world\n");
 
-	lai_enter_sleep(5);
-	printf("shutdown didn't work\n");
+	//lai_enter_sleep(5);
+	//printf("shutdown didn't work\n");
 
 	while (true) __asm__("hlt");
 }

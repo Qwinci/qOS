@@ -57,7 +57,7 @@ add_custom_target(run_kvm
 add_custom_target(run
         COMMAND qemu-system-x86_64 -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         -m 4G -machine q35 -cpu qemu64 -smp 2 -d int -no-reboot -no-shutdown
-        -device ich9-usb-uhci1 -device usb-kbd -device sb16
+        -device ich9-usb-uhci1 -device usb-kbd -device sb16 -display sdl
         DEPENDS qos
         USES_TERMINAL VERBATIM)
 add_custom_target(debug

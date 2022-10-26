@@ -53,6 +53,7 @@ __attribute__((interrupt)) void timer0_interrupt(InterruptFrame* frame);
 static uint32_t nanoseconds_in_tick = 0;
 
 bool hpet_initialized = false;
+static uint8_t hpet_int = 0;
 
 bool initialize_hpet(void* rsdp) {
 	HPETHeader* header = (HPETHeader*) locate_acpi_table(rsdp, "HPET");
@@ -68,6 +69,27 @@ bool initialize_hpet(void* rsdp) {
 	uint32_t femtoseconds_in_tick = cap >> 32;
 	nanoseconds_in_tick = femtoseconds_in_tick / 1000000;
 
+	uint64_t conf = read_register_64(REG_CONF);
+	conf &= ~CONF_LEGACY_MAPPING_ENABLED;
+	conf |= CONF_ENABLE;
+	write_register_64(REG_CONF, conf);
+
+	const uint8_t* hpet_interrupt = get_free_interrupt_index();
+	if (!hpet_interrupt) {
+		printf("hpet: error: failed to allocate interrupt vector\n");
+		return false;
+	}
+	hpet_int = *hpet_interrupt;
+	register_interrupt(hpet_int, timer0_interrupt, INTERRUPT_TYPE_INTERRUPT);
+
+	if (!hpet_reselect_irq()) return false;
+
+	hpet_initialized = true;
+
+	return true;
+}
+
+bool hpet_reselect_irq() {
 	uint64_t timer0_conf = read_register_64(REG_TIMER_CONF(0));
 	uint32_t timer0_supported_irqs = timer0_conf >> 32;
 
@@ -79,28 +101,18 @@ bool initialize_hpet(void* rsdp) {
 			supported_irq_found = true;
 
 			IoApicRedirectionEntry entry = {
-					.vector = IRQ0 + i,
+					.vector = hpet_int,
 					.destination = bsp_apic_id
 			};
 
-			register_interrupt(IRQ0 + i, timer0_interrupt, INTERRUPT_TYPE_INTERRUPT);
 			register_io_apic_redirection_entry(i, entry);
 			break;
 		}
 	}
 
-	if (!supported_irq_found) return false;
+	if (supported_irq_found) write_register_64(REG_TIMER_CONF(0), timer0_conf);
 
-	write_register_64(REG_TIMER_CONF(0), timer0_conf);
-
-	uint64_t conf = read_register_64(REG_CONF);
-	conf &= ~CONF_LEGACY_MAPPING_ENABLED;
-	conf |= CONF_ENABLE;
-	write_register_64(REG_CONF, conf);
-
-	hpet_initialized = true;
-
-	return true;
+	return supported_irq_found;
 }
 
 static volatile bool sleeped = false;
@@ -115,5 +127,5 @@ void hpet_sleep(uint32_t us) {
 	uint64_t ticks = (uint64_t) us * 1000 / nanoseconds_in_tick;
 	uint64_t value = read_register_64(REG_MAIN_COUNTER) + ticks;
 	write_register_64(REG_TIMER_COMP(0), value);
-	while (!sleeped) __asm__("pause" : : : "memory");
+	while (!sleeped) __builtin_ia32_pause();
 }

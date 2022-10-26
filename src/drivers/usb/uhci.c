@@ -9,6 +9,7 @@
 #include "memory.h"
 #include "paging/malloc.h"
 #include "lai/helpers/pci.h"
+#include "drivers/hpet.h"
 
 static bool io_space = false;
 static uint64_t bar;
@@ -120,13 +121,13 @@ typedef struct {
 	} d1;
 	uint32_t d2;
 	uint32_t buffer_ptr;
-} TransferDescriptor;
+} UsbUhciTransferDescriptor;
 
 typedef struct {
 	uint32_t head_link_ptr;
 	uint32_t element_link_ptr;
 	uint32_t parent_ptr;
-} QueueDescriptor;
+} UsbUhciQueueDescriptor;
 
 #define TD_PTR_FLAG_TERMINATE (1 << 0)
 #define TD_PTR_FLAG_QUEUE (1 << 1)
@@ -235,8 +236,6 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 		acpi_resource_t result;
 		lai_pci_route_pin(&result, info.segment, info.bus, info.device, info.function, header->interrupt_pin);
 
-		printf("result base: 0x%h, irq_flags: 0x%h\n", result.base, result.irq_flags);
-
 		IoApicTriggerMode trigger_mode = (result.irq_flags &
 				(ACPI_SMALL_IRQ_EDGE_TRIGGERED | ACPI_EXTENDED_IRQ_EDGE_TRIGGERED))
 						? IO_APIC_TRIGGER_MODE_EDGE : IO_APIC_TRIGGER_MODE_LEVEL;
@@ -250,6 +249,16 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 				.trigger_mode = trigger_mode,
 				.pin_polarity = polarity
 		};
+
+		if (!io_apic_is_entry_free(result.base)) {
+			printf("io apic entry %u8 is used\n", result.base);
+			// todo other irqs than hpet
+			if (!hpet_reselect_irq()) {
+				printf("usb uhci: error: failed to relocate hpet interrupt\n");
+				return;
+			}
+		}
+
 		register_io_apic_redirection_entry(result.base, entry);
 
 		register_interrupt(usb_int, usb_interrupt, INTERRUPT_TYPE_INTERRUPT);
@@ -322,21 +331,43 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	memset(frame_list, 0, 0x1000);
 
 	// resv0 resv1 resv2 resv3 resv4 iso bulk control 1ms 2ms 4ms 8ms 16ms 32ms 64ms 128ms
-	QueueDescriptor* queues = lmalloc(16 * sizeof(QueueDescriptor));
+	UsbUhciQueueDescriptor* queues = lmalloc(16 * sizeof(UsbUhciQueueDescriptor));
 	if (!queues) {
 		printf("usb uhci: error: failed to allocate queue descriptors\n");
 		return;
 	}
-	memset(queues, 0, 16 * sizeof(QueueDescriptor));
+	memset(queues, 0, 16 * sizeof(UsbUhciQueueDescriptor));
 
-	for (uint8_t queue = 8; queue < 16; ++queue) {
+	for (uint8_t queue = 7; queue < 16; ++queue) {
 		queues[queue].head_link_ptr = (uint32_t) ((uintptr_t) &queues[queue - 1] - 0xFFFF800000000000);
 		queues[queue].head_link_ptr |= TD_PTR_FLAG_QUEUE;
 	}
 
+	// 1ms 2ms 1ms 4ms 1ms 2ms 1ms 8ms 1ms 2ms 1ms 4ms 1ms 2ms 1ms 16ms
+
+	const uint8_t FIRST_PERIODIC_QUEUE = 8;
 	for (uint16_t i = 0; i < 0x1000 / 4; ++i) {
-		frame_list[i] |= FRAME_ENTRY_TERMINATE;
-		//frame_list[i] |= (uint32_t) ((uintptr_t) queues - 0xFFFF800000000000);
+		UsbUhciQueueDescriptor* queue = NULL;
+		// 128ms
+		if (i & 0b1111111) queue = &queues[FIRST_PERIODIC_QUEUE + 7];
+		// 64ms
+		else if (i & 0b111111) queue = &queues[FIRST_PERIODIC_QUEUE + 6];
+		// 32ms
+		else if (i & 0b11111) queue = &queues[FIRST_PERIODIC_QUEUE + 5];
+		// 16ms
+		else if (i & 0b1111) queue = &queues[FIRST_PERIODIC_QUEUE + 4];
+		// 8ms
+		else if (i & 0b111) queue = &queues[FIRST_PERIODIC_QUEUE + 3];
+		// 4ms
+		else if (i & 0b11) queue = &queues[FIRST_PERIODIC_QUEUE + 2];
+		// 2ms
+		else if ((i & 1)) queue = &queues[FIRST_PERIODIC_QUEUE + 1];
+		// 1ms
+		else if ((i & 1) == 0) queue = &queues[FIRST_PERIODIC_QUEUE];
+		else printf("usb uhci: error: missing queue size\n");
+		if (i < 16) printf("queue: 0x%h\n", queue);
+		frame_list[i] = (uint32_t) ((uintptr_t) queue - 0xFFFF800000000000);
+		frame_list[i] |= FRAME_ENTRY_QUEUE;
 	}
 
 	write32(REG_FRBASEADD, (uint32_t) ((uintptr_t) frame_list - 0xFFFF800000000000));
@@ -354,9 +385,9 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	}
 
 	// clear status
-	write16(REG_USBSTS, 0xFFFF);
+	//write16(REG_USBSTS, 0xFFFF);
 
-	write16(REG_USBCMD, CMD_RUN);
+	//write16(REG_USBCMD, CMD_RUN);
 }
 
 static inline bool check_port_present(uint8_t port_offset) {
