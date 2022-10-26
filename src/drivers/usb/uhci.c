@@ -432,10 +432,6 @@ static void usb_uhci_remove_queue(UsbUhciQueueDescriptor* q) {
 
 __attribute__((interrupt)) static void usb_interrupt(InterruptFrame* interrupt_frame) {
 	uint16_t status = read16(REG_USBSTS);
-	printf("usb int status: 0x%h\n", status);
-	UsbUhciTransferDescriptor* desc = (UsbUhciTransferDescriptor*)
-			((uintptr_t) queues[FIRST_PERIODIC_QUEUE].element_link_ptr + 0xFFFF800000000000);
-	printf("desc status: 0x%h\n", desc->d1.status);
 	write16(REG_USBSTS, STATUS_USBINT | 0xFFFF);
 	// 0x63
 	lapic_write(LAPIC_REG_EOI, 0);

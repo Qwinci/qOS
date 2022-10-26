@@ -37,7 +37,7 @@ add_custom_command(TARGET qos POST_BUILD
 if(NOT EXISTS ${PROJECT_BINARY_DIR}/limine)
     execute_process(
             COMMAND git clone https://github.com/limine-bootloader/limine.git
-                --branch=v3.0-branch-binary --depth=1 ${PROJECT_BINARY_DIR}/limine
+                --branch=v4.x-branch-binary --depth=1 ${PROJECT_BINARY_DIR}/limine
     )
     execute_process(COMMAND make -C ${PROJECT_BINARY_DIR}/limine)
     execute_process(COMMAND mkdir -p ${PROJECT_BINARY_DIR}/iso_root)
