@@ -11,6 +11,13 @@ void enumerate_pci();
 #define PCI_CAP_MSI_X 0x11
 
 typedef struct {
+	uint16_t segment;
+	uint8_t bus;
+	uint8_t device;
+	uint8_t function;
+} PciDeviceInfo;
+
+typedef struct {
 	uint16_t vendor_id;
 	uint16_t device_id;
 	volatile uint16_t command;

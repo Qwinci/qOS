@@ -24,6 +24,10 @@ typedef struct {
 
 static_assert(sizeof(PCIEntry) == 16);
 
+static uint16_t current_segment;
+static uint8_t current_bus;
+static uint8_t current_device;
+
 void enumerate_function(uintptr_t base, uint8_t function) {
 	uintptr_t address = base + ((uintptr_t) function << 12);
 
@@ -60,16 +64,24 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 
 	PCIDeviceHeader0* header0 = (PCIDeviceHeader0*) header;
 
+	PciDeviceInfo info = {
+			.segment = current_segment,
+			.bus = current_bus,
+			.device = current_device,
+			.function = function
+			};
+
 	/*if (header->vendor_id == 0x8086 && header->device_id == 0x10D3) {
 		// intel 82574L gigabit network connection
 		header->command |= PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE | PCI_CMD_BUS_MASTER;
 		initialize_intel_82574(header0);
 	}*/
 	// usb controller
+
 	if (header->class == 0xC && header->subclass == 0x3) {
 		// 0x0 = UHCI, 0x10 = OHCI, 0x20 = EHCI, 0x30 = XHCI
 		if (header->prog_if == 0x0) {
-			initialize_usb_uhci(header0);
+			initialize_usb_uhci(header0, info);
 		}
 		else if (header->prog_if == 0x10) {
 
@@ -84,6 +96,7 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 }
 
 void enumerate_device(uintptr_t base, uint8_t slot) {
+	current_device = slot;
 	uintptr_t address = base + ((uintptr_t) slot << 15);
 
 	pmap(
@@ -115,6 +128,7 @@ void enumerate_device(uintptr_t base, uint8_t slot) {
 }
 
 void enumerate_bus(uintptr_t base, uint8_t bus) {
+	current_bus = bus;
 	uintptr_t address = base + ((uintptr_t) bus << 20);
 
 	pmap(
@@ -146,6 +160,7 @@ bool initialize_pci(void* rsdp) {
 void enumerate_pci() {
 	for (size_t i = 0; i < mcfg->header.length - sizeof(MCFG); i += sizeof(PCIEntry)) {
 		PCIEntry* entry = (PCIEntry*) ((uintptr_t) mcfg + sizeof(MCFG) + i);
+		current_segment = entry->segment_group;
 		for (uint8_t bus = entry->start_bus; bus < entry->end_bus; ++bus) {
 			enumerate_bus(entry->base + 0xFFFF800000000000, bus);
 		}

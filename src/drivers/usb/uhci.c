@@ -8,6 +8,7 @@
 #include "timers/timers.h"
 #include "memory.h"
 #include "paging/malloc.h"
+#include "lai/helpers/pci.h"
 
 static bool io_space = false;
 static uint64_t bar;
@@ -158,7 +159,7 @@ typedef struct {
 #define TD_FLAG_ERR_COUNT_SHIFT (3)
 #define TD_FLAG_SHORT_PACKET_DETECT (1 << 5)
 
-void initialize_usb_uhci(PCIDeviceHeader0* header) {
+void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	uint32_t size;
 	if (header->BAR4 & 1) {
 		bar = header->BAR4 & 0xFFFFFFFC;
@@ -231,12 +232,25 @@ void initialize_usb_uhci(PCIDeviceHeader0* header) {
 		msi->msg_control |= MSI_CTRL_MM_1_ENABLE;
 	}
 	else {
+		acpi_resource_t result;
+		lai_pci_route_pin(&result, info.segment, info.bus, info.device, info.function, header->interrupt_pin);
+
+		printf("result base: 0x%h, irq_flags: 0x%h\n", result.base, result.irq_flags);
+
+		IoApicTriggerMode trigger_mode = (result.irq_flags &
+				(ACPI_SMALL_IRQ_EDGE_TRIGGERED | ACPI_EXTENDED_IRQ_EDGE_TRIGGERED))
+						? IO_APIC_TRIGGER_MODE_EDGE : IO_APIC_TRIGGER_MODE_LEVEL;
+		IoApicPinPolarity polarity = (result.irq_flags &
+				(ACPI_SMALL_IRQ_ACTIVE_LOW | ACPI_EXTENDED_IRQ_ACTIVE_LOW))
+						? IO_APIC_PIN_POLARITY_ACTIVE_LOW : IO_APIC_PIN_POLARITY_ACTIVE_HIGH;
+
 		IoApicRedirectionEntry entry = {
 				.vector = usb_int,
-				.destination = bsp_apic_id
+				.destination = bsp_apic_id,
+				.trigger_mode = trigger_mode,
+				.pin_polarity = polarity
 		};
-		write_io_apic_isa_redirection_entry(15, entry);
-		header->interrupt_line = 15;
+		register_io_apic_redirection_entry(result.base, entry);
 
 		register_interrupt(usb_int, usb_interrupt, INTERRUPT_TYPE_INTERRUPT);
 	}
@@ -386,4 +400,6 @@ static inline bool enable_port(uint8_t port_offset) {
 
 __attribute__((interrupt)) static void usb_interrupt(InterruptFrame* interrupt_frame) {
 	printf("usb int\n");
+	write16(REG_USBSTS, STATUS_USBINT);
+	lapic_write(LAPIC_REG_EOI, 0);
 }

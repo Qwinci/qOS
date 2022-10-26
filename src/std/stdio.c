@@ -5,7 +5,9 @@
 #include "boot_info.h"
 #include <stdbool.h>
 #include "string.h"
+#include "timers/timers.h"
 #include <stdatomic.h>
+#include "smp/spinlock.h"
 
 typedef struct {
 	Framebuffer* fb;
@@ -82,16 +84,16 @@ static inline void put_string(const char* str) {
 			clear_screen(0);
 			state.line = 0;
 			state.col = 0;
+			//break;
 		}
 		put_char(*str, state.col++, state.line);
 	}
 }
 
-static atomic_flag lock = ATOMIC_FLAG_INIT;
+static spinlock lock = false;
 
 void printf(const char* fmt, ...) {
-	while (atomic_flag_test_and_set_explicit(&lock, memory_order_acquire))
-		__asm__ volatile("pause" : : : "memory");
+	spinlock_lock(&lock);
 	va_list valist;
 	va_start(valist, fmt);
 	for (; *fmt; ++fmt) {
@@ -202,11 +204,12 @@ void printf(const char* fmt, ...) {
 				clear_screen(0);
 				state.line = 0;
 				state.col = 0;
+				//break;
 			}
 			put_char(*fmt, state.col++, state.line);
 		}
 	}
 
 	va_end(valist);
-	atomic_flag_clear_explicit(&lock, memory_order_release);
+	spinlock_unlock(&lock);
 }

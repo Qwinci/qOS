@@ -8,7 +8,6 @@
 #include "timers/timers.h"
 #include "acpi/acpi.h"
 #include "lai/helpers/pm.h"
-#include <lai/core.h>
 
 __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 	initialize_printf(&boot_info.framebuffer, boot_info.font_start);
@@ -22,7 +21,7 @@ __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 	initialize_apic(boot_info.rsdp);
 	initialize_timers(boot_info.rsdp);
 	lai_host_init(boot_info.rsdp);
-	//enumerate_pci();
+	enumerate_pci();
 
 	//if (initialize_sb16()) printf("sb16 initialized\n");
 

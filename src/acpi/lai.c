@@ -7,6 +7,7 @@
 #include "drivers/pci.h"
 #include "timers/timers.h"
 #include "lai/helpers/sci.h"
+#include "lai/drivers/ec.h"
 
 static void* rsdp_ptr;
 static uint8_t acpi_revision = 0;
@@ -21,7 +22,7 @@ void lai_host_init(void* rsdp) {
 }
 
 void laihost_log(int level, const char* msg) {
-	if (level == LAI_DEBUG_LOG) printf("lai debug: %s\n", msg);
+	if (level == LAI_DEBUG_LOG) /*printf("lai debug: %s\n", msg)*/;
 	else printf("lai warning: %s\n", msg);
 }
 
