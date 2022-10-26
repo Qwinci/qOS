@@ -160,6 +160,10 @@ typedef struct {
 #define TD_FLAG_ERR_COUNT_SHIFT (3)
 #define TD_FLAG_SHORT_PACKET_DETECT (1 << 5)
 
+static uint32_t port_count = 0;
+static UsbUhciQueueDescriptor* queues;
+#define FIRST_PERIODIC_QUEUE 8
+
 void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	uint32_t size;
 	if (header->BAR4 & 1) {
@@ -218,11 +222,12 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 		}
 		usb_int = *index;
 		usb_int_initialized = true;
+
+		register_interrupt(usb_int, usb_interrupt, INTERRUPT_TYPE_INTERRUPT);
 	}
 
 	PciMsiCapability* msi = pci_get_msi_cap0(header);
 	if (msi) {
-		printf("enabling msi\n");
 		msi->msg_data = usb_int; // interrupt vector
 		// address + cpu
 		msi->msg_addr = 0xFEE00000 | 0 << 12;
@@ -252,16 +257,9 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 
 		if (!io_apic_is_entry_free(result.base)) {
 			printf("io apic entry %u8 is used\n", result.base);
-			// todo other irqs than hpet
-			if (!hpet_reselect_irq()) {
-				printf("usb uhci: error: failed to relocate hpet interrupt\n");
-				return;
-			}
 		}
 
 		register_io_apic_redirection_entry(result.base, entry);
-
-		register_interrupt(usb_int, usb_interrupt, INTERRUPT_TYPE_INTERRUPT);
 	}
 
 	if (io_space) header->header.command |= PCI_CMD_BUS_MASTER | PCI_CMD_IO_SPACE;
@@ -331,41 +329,39 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	memset(frame_list, 0, 0x1000);
 
 	// resv0 resv1 resv2 resv3 resv4 iso bulk control 1ms 2ms 4ms 8ms 16ms 32ms 64ms 128ms
-	UsbUhciQueueDescriptor* queues = lmalloc(16 * sizeof(UsbUhciQueueDescriptor));
+	queues = lmalloc(16 * sizeof(UsbUhciQueueDescriptor));
 	if (!queues) {
 		printf("usb uhci: error: failed to allocate queue descriptors\n");
 		return;
 	}
 	memset(queues, 0, 16 * sizeof(UsbUhciQueueDescriptor));
 
+	queues[6].head_link_ptr |= TD_PTR_FLAG_TERMINATE;
 	for (uint8_t queue = 7; queue < 16; ++queue) {
 		queues[queue].head_link_ptr = (uint32_t) ((uintptr_t) &queues[queue - 1] - 0xFFFF800000000000);
 		queues[queue].head_link_ptr |= TD_PTR_FLAG_QUEUE;
 	}
 
 	// 1ms 2ms 1ms 4ms 1ms 2ms 1ms 8ms 1ms 2ms 1ms 4ms 1ms 2ms 1ms 16ms
-
-	const uint8_t FIRST_PERIODIC_QUEUE = 8;
 	for (uint16_t i = 0; i < 0x1000 / 4; ++i) {
 		UsbUhciQueueDescriptor* queue = NULL;
 		// 128ms
-		if (i & 0b1111111) queue = &queues[FIRST_PERIODIC_QUEUE + 7];
+		if ((i & 0b1111111) == 0b1111111) queue = &queues[FIRST_PERIODIC_QUEUE + 7];
 		// 64ms
-		else if (i & 0b111111) queue = &queues[FIRST_PERIODIC_QUEUE + 6];
+		else if ((i & 0b111111) == 0b111111) queue = &queues[FIRST_PERIODIC_QUEUE + 6];
 		// 32ms
-		else if (i & 0b11111) queue = &queues[FIRST_PERIODIC_QUEUE + 5];
+		else if ((i & 0b11111) == 0b11111) queue = &queues[FIRST_PERIODIC_QUEUE + 5];
 		// 16ms
-		else if (i & 0b1111) queue = &queues[FIRST_PERIODIC_QUEUE + 4];
+		else if ((i & 0b1111) == 0b1111) queue = &queues[FIRST_PERIODIC_QUEUE + 4];
 		// 8ms
-		else if (i & 0b111) queue = &queues[FIRST_PERIODIC_QUEUE + 3];
+		else if ((i & 0b111) == 0b111) queue = &queues[FIRST_PERIODIC_QUEUE + 3];
 		// 4ms
-		else if (i & 0b11) queue = &queues[FIRST_PERIODIC_QUEUE + 2];
+		else if ((i & 0b11) == 0b11) queue = &queues[FIRST_PERIODIC_QUEUE + 2];
 		// 2ms
 		else if ((i & 1)) queue = &queues[FIRST_PERIODIC_QUEUE + 1];
 		// 1ms
 		else if ((i & 1) == 0) queue = &queues[FIRST_PERIODIC_QUEUE];
 		else printf("usb uhci: error: missing queue size\n");
-		if (i < 16) printf("queue: 0x%h\n", queue);
 		frame_list[i] = (uint32_t) ((uintptr_t) queue - 0xFFFF800000000000);
 		frame_list[i] |= FRAME_ENTRY_QUEUE;
 	}
@@ -380,14 +376,69 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 			if (read16(REG_PORTSC0 + i) & PORT_SC_CUR_CONNECT_STATUS) {
 				if (enable_port(i)) printf("successfully enabled port %u8\n", i / 2);
 			}
+			++port_count;
 		}
 		else break;
 	}
 
-	// clear status
-	//write16(REG_USBSTS, 0xFFFF);
+	UsbUhciTransferDescriptor* desc = malloc(sizeof(UsbUhciTransferDescriptor));
+	desc->buffer_ptr = 0;
+	desc->link_ptr |= TD_PTR_FLAG_TERMINATE;
+	desc->d2 = 0;
+	desc->d1.flags = TD_FLAG_IOC;
+	desc->d1.status_flags = TD_STATUS_ACTIVE;
 
-	//write16(REG_USBCMD, CMD_RUN);
+	queues[FIRST_PERIODIC_QUEUE].element_link_ptr = (uint32_t) ((uintptr_t) desc - 0xFFFF800000000000);
+
+	// clear status
+	write16(REG_USBSTS, 0xFFFF);
+
+	write16(REG_USBCMD, CMD_RUN);
+
+	uint16_t status = read16(REG_USBSTS);
+
+	printf("status: 0x%h\n", status);
+}
+
+typedef enum {
+	QUEUE_1MS = FIRST_PERIODIC_QUEUE,
+	QUEUE_2MS,
+	QUEUE_4MS,
+	QUEUE_8MS,
+	QUEUE_16MS,
+	QUEUE_32MS,
+	QUEUE_64MS,
+	QUEUE_128MS,
+	QUEUE_CONTROL = 7,
+	QUEUE_BULK = 6
+} Queue;
+
+static void usb_uhci_insert_queue(Queue queue, UsbUhciQueueDescriptor* q) {
+	UsbUhciQueueDescriptor* root_queue = &queues[queue];
+	while (root_queue->element_link_ptr & ~0b1111) {
+		root_queue = (UsbUhciQueueDescriptor*) (((uintptr_t) (
+				root_queue->element_link_ptr & ~0b1111)) + 0xFFFF800000000000);
+	}
+	q->head_link_ptr = root_queue->element_link_ptr;
+	q->parent_ptr = (uint32_t) ((uintptr_t) root_queue - 0xFFFF800000000000);
+	root_queue->element_link_ptr = (uintptr_t) q - 0xFFFF800000000000;
+	root_queue->element_link_ptr |= TD_PTR_FLAG_QUEUE;
+}
+
+static void usb_uhci_remove_queue(UsbUhciQueueDescriptor* q) {
+	UsbUhciQueueDescriptor* parent = (UsbUhciQueueDescriptor*) ((uintptr_t) q->parent_ptr + 0xFFFF800000000000);
+	parent->element_link_ptr = TD_PTR_FLAG_TERMINATE;
+}
+
+__attribute__((interrupt)) static void usb_interrupt(InterruptFrame* interrupt_frame) {
+	uint16_t status = read16(REG_USBSTS);
+	printf("usb int status: 0x%h\n", status);
+	UsbUhciTransferDescriptor* desc = (UsbUhciTransferDescriptor*)
+			((uintptr_t) queues[FIRST_PERIODIC_QUEUE].element_link_ptr + 0xFFFF800000000000);
+	printf("desc status: 0x%h\n", desc->d1.status);
+	write16(REG_USBSTS, STATUS_USBINT | 0xFFFF);
+	// 0x63
+	lapic_write(LAPIC_REG_EOI, 0);
 }
 
 static inline bool check_port_present(uint8_t port_offset) {
@@ -427,10 +478,4 @@ static inline bool enable_port(uint8_t port_offset) {
 	udelay(50 * 1000);
 
 	return read16(REG_PORTSC0 + port_offset) & PORT_SC_ENABLE;
-}
-
-__attribute__((interrupt)) static void usb_interrupt(InterruptFrame* interrupt_frame) {
-	printf("usb int\n");
-	write16(REG_USBSTS, STATUS_USBINT);
-	lapic_write(LAPIC_REG_EOI, 0);
 }

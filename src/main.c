@@ -8,6 +8,7 @@
 #include "timers/timers.h"
 #include "acpi/acpi.h"
 #include "lai/helpers/pm.h"
+#include "utils/cpuid.h"
 
 __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 	initialize_printf(&boot_info.framebuffer, boot_info.font_start);
