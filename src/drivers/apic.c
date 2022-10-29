@@ -170,14 +170,14 @@ void initialize_apic(void* rsdp) {
 	SDTHeader* header = (SDTHeader*) madt;
 	madt += sizeof(SDTHeader);
 
-	uint64_t local_apic_address = *(uint32_t*) madt + 0xFFFF800000000000;
+	uint64_t local_apic_address = to_virt(*(uint32_t*) madt);
 	madt += 4;
 	uint32_t flags = *(uint32_t*) madt;
 	madt += 4;
 
 	for (size_t i = (uintptr_t) header; i < (uintptr_t) header + header->length; i += 0x1000) {
-		pmap((i - 0xFFFF800000000000) / 0x1000 * 0x1000, i / 0x1000 * 0x1000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-		prefresh(i);
+		pmap(to_phys(i) & ~0xFFF, i & ~0xFFF, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+		prefresh(i & ~0xFFF);
 	}
 
 	uint8_t bsp_id;
@@ -214,7 +214,7 @@ void initialize_apic(void* rsdp) {
 				i += 4;
 
 				io_apic_list[io_apic_count++] = (IoApic)
-						{.base = io_apic_address + 0xFFFF800000000000,
+						{.base = to_virt(io_apic_address),
 						 .interrupt_base = global_system_interrupt_base,
 						 .used_irqs = 0};
 				break;
@@ -268,7 +268,7 @@ void initialize_apic(void* rsdp) {
 				i += 2;
 				uint64_t address = *(uint64_t*) (madt + i);
 				i += 8;
-				local_apic_address = address + 0xFFFF800000000000;
+				local_apic_address = to_virt(address);
 				break;
 			}
 			case 9: // processor local x2apic
@@ -316,8 +316,8 @@ void initialize_apic(void* rsdp) {
 	const uint32_t INIT_DEASSERT = 1 << 15;
 
 	size_t trampoline_size = (size_t) (smp_trampoline_end - smp_trampoline_start);
-	void* trampoline = (void*) (0xFFFF800000000000 + 0x1000);
-	uintptr_t trampoline_phys = (uintptr_t) trampoline - 0xFFFF800000000000;
+	void* trampoline = (void*) to_virt(0x1000);
+	uintptr_t trampoline_phys = to_phys((uintptr_t) trampoline);
 
 	pmap(
 			trampoline_phys,

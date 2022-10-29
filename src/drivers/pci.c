@@ -32,7 +32,7 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 	uintptr_t address = base + ((uintptr_t) function << 12);
 
 	pmap(
-			address - 0xFFFF800000000000,
+			to_phys(address),
 			address,
 			PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
 	prefresh(address);
@@ -53,14 +53,6 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 	else printf("%h ", header->device_id);
 
 	printf("class: %u8, subclass: %u8\n", header->class, header->subclass);
-
-	if (header->class == 0 && header->subclass == 0) {
-		printf("u64: 0x%h\n", *(volatile uint64_t*) header);
-		printf("memory dump sizeof(u32) * 15:\n");
-		for (uint8_t i = 0; i < 15; ++i) {
-			printf("u32: 0x%h\n", *(volatile uint32_t*) ((uintptr_t) header + i * sizeof(uint32_t)));
-		}
-	}
 
 	PCIDeviceHeader0* header0 = (PCIDeviceHeader0*) header;
 
@@ -100,7 +92,7 @@ void enumerate_device(uintptr_t base, uint8_t slot) {
 	uintptr_t address = base + ((uintptr_t) slot << 15);
 
 	pmap(
-			address - 0xFFFF800000000000,
+			to_phys(address),
 			address,
 			PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
 	prefresh(address);
@@ -132,7 +124,7 @@ void enumerate_bus(uintptr_t base, uint8_t bus) {
 	uintptr_t address = base + ((uintptr_t) bus << 20);
 
 	pmap(
-			address - 0xFFFF800000000000,
+			to_phys(address),
 			address,
 			PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
 	prefresh(address);
@@ -162,7 +154,7 @@ void enumerate_pci() {
 		PCIEntry* entry = (PCIEntry*) ((uintptr_t) mcfg + sizeof(MCFG) + i);
 		current_segment = entry->segment_group;
 		for (uint8_t bus = entry->start_bus; bus < entry->end_bus; ++bus) {
-			enumerate_bus(entry->base + 0xFFFF800000000000, bus);
+			enumerate_bus(to_virt(entry->base), bus);
 		}
 	}
 }
@@ -172,7 +164,7 @@ PCIDeviceHeader* pci_get_dev_header(uint16_t seg, uint8_t bus, uint8_t slot, uin
 		PCIEntry* entry = (PCIEntry*) ((uintptr_t) mcfg + sizeof(MCFG) + i);
 		if (entry->segment_group == seg) {
 			PCIDeviceHeader* header = (PCIDeviceHeader*)
-					(entry->base + 0xFFFF800000000000 +
+					(to_virt(entry->base) +
 							((uintptr_t) bus << 20) +
 							((uintptr_t) slot << 15) +
 							((uintptr_t) fun << 12));

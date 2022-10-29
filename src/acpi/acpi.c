@@ -33,7 +33,7 @@ void* locate_acpi_table(void* rsdp, const char* signature) {
 
 	bool bad_xsdt = false;
 	if (rsdp_descriptor->revision != 0) {
-		XSDT* xsdt = (XSDT*) (rsdp_descriptor->xsdt_address + 0xFFFF800000000000);
+		XSDT* xsdt = (XSDT*) to_virt(rsdp_descriptor->xsdt_address);
 		size_t entries = (xsdt->header.length - sizeof(SDTHeader)) / 8;
 		for (size_t i = 0; i < entries; ++i) {
 			if (xsdt->pointer[i] == 0) {
@@ -45,21 +45,20 @@ void* locate_acpi_table(void* rsdp, const char* signature) {
 	}
 
 	if (rsdp_descriptor->revision == 0 || bad_xsdt) {
-		RSDT* rsdt = (RSDT*) (rsdp_descriptor->rsdt_address + 0xFFFF800000000000);
+		RSDT* rsdt = (RSDT*) to_virt(rsdp_descriptor->rsdt_address);
 		size_t entries = (rsdt->header.length - sizeof(rsdt->header)) / 4;
 		for (size_t i = 0; i < entries; ++i) {
-			SDTHeader* header = (SDTHeader*) ((uint64_t) rsdt->pointer[i] + 0xFFFF800000000000);
+			SDTHeader* header = (SDTHeader*) to_virt(rsdt->pointer[i]);
 			if (strncmp((const char*) header, signature, 4) == 0) return header;
 		}
 	}
 	else {
-		XSDT* xsdt = (XSDT*) (rsdp_descriptor->xsdt_address + 0xFFFF800000000000);
+		XSDT* xsdt = (XSDT*) to_virt(rsdp_descriptor->xsdt_address);
 		size_t entries = (xsdt->header.length - sizeof(SDTHeader)) / 8;
 		for (size_t i = 0; i < entries; ++i) {
-			SDTHeader* header = (SDTHeader*) (xsdt->pointer[i]);
-			header = (SDTHeader*) ((uintptr_t) header + 0xFFFF800000000000);
-			pmap(xsdt->pointer[i], xsdt->pointer[i] + 0xFFFF800000000000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-			prefresh(xsdt->pointer[i] + 0xFFFF800000000000);
+			SDTHeader* header = (SDTHeader*) to_virt(xsdt->pointer[i]);
+			pmap(xsdt->pointer[i], to_virt(xsdt->pointer[i]), PAGEFLAG_PRESENT | PAGEFLAG_RW);
+			prefresh(to_virt(xsdt->pointer[i]));
 			if (strncmp((const char*) header, signature, 4) == 0) return header;
 		}
 	}
@@ -72,7 +71,7 @@ void* locate_nth_acpi_table(void* rsdp, const char* signature, size_t index) {
 
 	bool bad_xsdt = false;
 	if (rsdp_descriptor->revision != 0) {
-		XSDT* xsdt = (XSDT*) (rsdp_descriptor->xsdt_address + 0xFFFF800000000000);
+		XSDT* xsdt = (XSDT*) to_virt(rsdp_descriptor->xsdt_address);
 		size_t entries = (xsdt->header.length - sizeof(SDTHeader)) / 8;
 		for (size_t i = 0; i < entries; ++i) {
 			if (xsdt->pointer[i] == 0) {
@@ -83,10 +82,10 @@ void* locate_nth_acpi_table(void* rsdp, const char* signature, size_t index) {
 	}
 
 	if (rsdp_descriptor->revision == 0 || bad_xsdt) {
-		RSDT* rsdt = (RSDT*) (rsdp_descriptor->rsdt_address + 0xFFFF800000000000);
+		RSDT* rsdt = (RSDT*) to_virt(rsdp_descriptor->rsdt_address);
 		size_t entries = (rsdt->header.length - sizeof(rsdt->header)) / 4;
 		for (size_t i = 0; i < entries; ++i) {
-			SDTHeader* header = (SDTHeader*) ((uint64_t) rsdt->pointer[i] + 0xFFFF800000000000);
+			SDTHeader* header = (SDTHeader*) to_virt(rsdt->pointer[i]);
 			if (strncmp((const char*) header, signature, 4) == 0) {
 				if (found_index == index) return header;
 				else ++found_index;
@@ -94,13 +93,12 @@ void* locate_nth_acpi_table(void* rsdp, const char* signature, size_t index) {
 		}
 	}
 	else {
-		XSDT* xsdt = (XSDT*) (rsdp_descriptor->xsdt_address + 0xFFFF800000000000);
+		XSDT* xsdt = (XSDT*) to_virt(rsdp_descriptor->xsdt_address);
 		size_t entries = (xsdt->header.length - sizeof(SDTHeader)) / 8;
 		for (size_t i = 0; i < entries; ++i) {
-			SDTHeader* header = (SDTHeader*) (xsdt->pointer[i]);
-			header = (SDTHeader*) ((uintptr_t) header + 0xFFFF800000000000);
-			pmap(xsdt->pointer[i], xsdt->pointer[i] + 0xFFFF800000000000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-			prefresh(xsdt->pointer[i] + 0xFFFF800000000000);
+			SDTHeader* header = (SDTHeader*) to_virt(xsdt->pointer[i]);
+			pmap(xsdt->pointer[i], to_virt(xsdt->pointer[i]), PAGEFLAG_PRESENT | PAGEFLAG_RW);
+			prefresh(to_virt(xsdt->pointer[i]));
 			if (strncmp((const char*) header, signature, 4) == 0) {
 				if (found_index == index) return header;
 				else ++found_index;

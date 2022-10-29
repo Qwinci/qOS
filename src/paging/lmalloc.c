@@ -91,6 +91,7 @@ static void* free_list_get(size_t index) {
 	if (!list->root) {
 		if (index == 8) {
 			void* memory = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
+			if (!memory) return NULL;
 			void* returned_block = memory;
 			list->root = (Node*) ((uintptr_t) returned_block + 0x800);
 			list->root->next = NULL;
@@ -98,6 +99,7 @@ static void* free_list_get(size_t index) {
 		}
 		else {
 			void* blocks = pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
+			if (!blocks) return NULL;
 			void* list_blocks = (void*) ((uintptr_t) blocks + index_to_size(index));
 			list->root = (Node*) list_blocks;
 			list_blocks = (void*) ((uintptr_t) list_blocks + index_to_size(index));
@@ -114,7 +116,6 @@ static void* free_list_get(size_t index) {
 	}
 	else {
 		Node* node = list->root;
-		if ((uintptr_t) node < 0xFFFF000000000000) printf("list %u8 root: 0x%h\n", index, node);
 		list->root = list->root->next;
 		return node;
 	}

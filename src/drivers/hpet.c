@@ -2,9 +2,7 @@
 #include <stdint.h>
 #include "acpi/acpi.h"
 #include <stdbool.h>
-#include "stdio.h"
-#include "interrupts/idt.h"
-#include "apic.h"
+#include "utils/mem.h"
 
 typedef struct {
 	uint8_t address_space_id;
@@ -56,7 +54,7 @@ bool initialize_hpet(void* rsdp) {
 	HPETHeader* header = (HPETHeader*) locate_acpi_table(rsdp, "HPET");
 	if (!header) return false;
 
-	base_address = header->base_address.address + 0xFFFF800000000000;
+	base_address = to_virt(header->base_address.address);
 
 	uint64_t cap = read_register_64(REG_CAP);
 	if ((cap & 1 << 13) == 0) {

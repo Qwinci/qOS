@@ -7,7 +7,6 @@
 #include "drivers/pci.h"
 #include "timers/timers.h"
 #include "lai/helpers/sci.h"
-#include "lai/drivers/ec.h"
 
 static void* rsdp_ptr;
 static uint8_t acpi_revision = 0;
@@ -52,9 +51,9 @@ void laihost_free(void* ptr, size_t size) {
 
 void* laihost_map(size_t address, size_t count) {
 	for (size_t i = 0; i < count; i += 0x1000) {
-		pmap(address, address + 0xFFFF800000000000, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+		pmap(address, to_virt(address), PAGEFLAG_PRESENT | PAGEFLAG_RW);
 	}
-	return (void*) (address + 0xFFFF800000000000);
+	return (void*) to_virt(address);
 }
 
 void laihost_unmap(void* ptr, size_t count) {
@@ -137,9 +136,9 @@ void* laihost_scan(const char* sig, size_t index) {
 	if (sig[0] == 'D' && sig[1] == 'S' && sig[2] == 'D' && sig[3] == 'T') {
 		FADT* fadt = locate_acpi_table(rsdp_ptr, "FACP");
 		if (acpi_revision != 0) {
-			return (void*) (fadt->x_dsdt + 0xFFFF800000000000);
+			return (void*) to_virt(fadt->x_dsdt);
 		}
-		else return (void*) ((uintptr_t) fadt->dsdt + 0xFFFF800000000000);
+		else return (void*) to_virt(fadt->dsdt);
 	}
 	return locate_nth_acpi_table(rsdp_ptr, sig, index);
 }

@@ -114,7 +114,6 @@ static void* free_list_get(size_t index) {
 	}
 	else {
 		Node* node = list->root;
-		if ((uintptr_t) node < 0xFFFF000000000000) printf("list %u8 root: 0x%h\n", index, node);
 		list->root = list->root->next;
 		return node;
 	}

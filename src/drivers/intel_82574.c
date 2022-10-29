@@ -182,12 +182,12 @@ void initialize_intel_82574(PCIDeviceHeader0* header) {
 	for (size_t i = 0; i < size; i += 0x1000) {
 		pmap(
 				bar0 + i,
-				0xFFFF800000000000 + bar0 + i,
+				to_virt(bar0 + i),
 				PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_CACHE_DISABLE);
-		prefresh(0xFFFF800000000000 + bar0 + i);
+		prefresh(to_virt(bar0 + i));
 	}
 
-	bar0 += 0xFFFF800000000000;
+	bar0 = to_virt(bar0);
 
 	printf("disabling interrupts\n");
 
