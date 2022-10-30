@@ -22,8 +22,6 @@ __attribute__((noreturn)) void kmain(BootInfo boot_info) {
 	lai_host_init(boot_info.rsdp);
 	enumerate_pci();
 
-	//if (initialize_sb16()) printf("sb16 initialized\n");
-
 	printf("hello world\n");
 
 	//lai_enter_sleep(5);

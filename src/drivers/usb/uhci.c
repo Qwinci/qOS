@@ -188,6 +188,37 @@ typedef enum {
 	QUEUE_BULK = 6
 } Queue;
 
+static UsbUhciTransferDescriptor* td_chain_starts[2 * 16] = {};
+static UsbUhciTransferDescriptor* td_chain_ends[2 * 16] = {};
+static uint8_t current_chain_indices[16] = {};
+static FrameEntry* frame_list;
+
+static inline void insert_td_chain(Queue queue, UsbUhciTransferDescriptor* td, UsbUhciTransferDescriptor* end) {
+	uint8_t next_chain = queue + (current_chain_indices[queue] == 0 ? 1 : 0);
+	if (!td_chain_starts[next_chain]) {
+		td_chain_starts[next_chain] = td;
+		td_chain_ends[next_chain] = end;
+		return;
+	}
+	td_chain_ends[next_chain]->link_ptr = to_phys((uintptr_t) end) | TD_PTR_FLAG_DEPTH_FIRST;
+	end->d1.flags |= TD_FLAG_IOC;
+}
+
+static inline void force_process_current_chains() {
+	for (uint8_t i = QUEUE_BULK; i < 16; ++i) {
+		uint8_t next_chain = current_chain_indices[i] == 0 ? 1 : 0;
+		current_chain_indices[i] = next_chain == 0 ? 1 : 0;
+		UsbUhciTransferDescriptor* td = td_chain_starts[i + next_chain];
+		if (td) queues[i].element_link_ptr = to_phys((uintptr_t) td);
+		printf("force process queue: %u8 with content: 0x%h\n", i, td);
+		td_chain_starts[i + next_chain] = NULL;
+	}
+}
+
+static inline void poll_td_active(volatile UsbUhciTransferDescriptor* td) {
+	while (td->d1.status & TD_STATUS_ACTIVE) __asm__ volatile("hlt" : : : "memory");
+}
+
 void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	uint32_t size;
 	if (header->BAR4 & 1) {
@@ -345,7 +376,7 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 
 	write16(REG_FRNUM, 0);
 
-	FrameEntry* frame_list = (FrameEntry*) pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
+	frame_list = (FrameEntry*) pmalloc(1, MEMORY_ALLOC_TYPE_LOW);
 	if (!frame_list) {
 		printf("usb uhci: error: failed to allocate uhci frame list\n");
 		return;
@@ -364,8 +395,7 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	queues[6].head_link_ptr = TD_PTR_FLAG_TERMINATE;
 	queues[6].element_link_ptr = TD_PTR_FLAG_TERMINATE;
 	for (uint8_t queue = 7; queue < 16; ++queue) {
-		queues[queue].head_link_ptr = (uint32_t) ((uintptr_t) &queues[queue - 1] - 0xFFFF800000000000);
-		printf("queue %u8: 0x%h, head ptr: 0x%h\n", queue, &queues[queue], queues[queue].head_link_ptr);
+		queues[queue].head_link_ptr = (uint32_t) to_phys((uintptr_t) &queues[queue - 1]);
 		queues[queue].head_link_ptr |= TD_PTR_FLAG_QUEUE;
 		queues[queue].element_link_ptr = TD_PTR_FLAG_TERMINATE;
 	}
@@ -435,9 +465,9 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 
 	DeviceDescriptorRequest* d = lmalloc(sizeof(DeviceDescriptorRequest));
 	*d = (DeviceDescriptorRequest) {
-			.request_type = dir_host_to_device | type_standard | recipient_device,
+			.request_type = dir_device_to_host | type_standard | recipient_device,
 			.request = GET_DESCRIPTOR,
-			.value = DESC_TYPE_DEVICE,
+			.value = DESC_TYPE_DEVICE << 8,
 			.index = 0,
 			.length = 8
 	};
@@ -493,16 +523,16 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 	in_packet->d2 = (8 - 1) << TD_D2_MAXLEN_SHIFT | PID_IN | TD_D2_DATA_TOGGLE;
 	status_packet->d2 = TD_D2_MAXLEN_MASK << TD_D2_MAXLEN_SHIFT | TD_D2_DATA_TOGGLE | PID_OUT;
 
-	UsbUhciQueueDescriptor* queue = lmalloc(sizeof(UsbUhciQueueDescriptor));
-	queue->head_link_ptr = TD_PTR_FLAG_TERMINATE;
-	queue->element_link_ptr = to_phys((uintptr_t) setup_packet);
+	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
 
 	// clear status
 	write16(REG_USBSTS, 0xFFFF);
 
 	write16(REG_USBCMD, CMD_RUN);
 
-	udelay(1000 * 1000);
+	force_process_current_chains();
+
+	poll_td_active(status_packet);
 
 	printf("setup packet status: 0x%h\n", setup_packet->d1.status);
 	printf("in packet status: 0x%h\n", in_packet->d1.status);
@@ -513,10 +543,20 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 
 __attribute__((interrupt)) static void usb_interrupt(InterruptFrame* interrupt_frame) {
 	uint16_t status = read16(REG_USBSTS);
+	uint16_t frame = read16(REG_FRNUM) & FRAME_LIST_CUR_NUM_MASK;
 	//if (frame > 0) frame -= 1;
 	//else frame = 1024;
 	if (status & ~STATUS_USBINT) {
 		//printf("usb error: 0x%h\n", status & ~STATUS_USBINT);
+		UsbUhciQueueDescriptor* queue = (UsbUhciQueueDescriptor*) to_virt(frame_list[frame] & ~0b1111);
+		uint8_t queue_index = (uintptr_t) (queue - queues) / sizeof(UsbUhciQueueDescriptor);
+		if (queue->element_link_ptr & TD_PTR_FLAG_TERMINATE) {
+			uint8_t next_chain = current_chain_indices[queue_index] == 0 ? 1 : 0;
+			current_chain_indices[queue_index] = next_chain == 0 ? 1 : 0;
+			UsbUhciTransferDescriptor* td = td_chain_starts[queue_index + next_chain];
+			queue->element_link_ptr = to_phys((uintptr_t) td);
+			td_chain_starts[queue_index + next_chain] = NULL;
+		}
 	}
 
 	write16(REG_USBSTS, STATUS_USBINT);
