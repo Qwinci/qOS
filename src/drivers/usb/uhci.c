@@ -588,7 +588,7 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 			false,
 			0,
 			0);
-	UsbUhciTransferDescriptor* address_status = create_packet(NULL, 0, true, PID_OUT, true, 0, 0);
+	UsbUhciTransferDescriptor* address_status = create_packet(NULL, 0, true, PID_IN, true, 0, 0);
 	link_packet(address_setup, address_status);
 	insert_td_chain(QUEUE_CONTROL, address_setup, address_status);
 
@@ -609,7 +609,7 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 
 	printf("class: %u8, subclass: %u8\n", out_desc->device_class, out_desc->device_subclass);
 	printf("max packet size: %u8\n", out_desc->max_packet_size);
-	printf("setup status: %u8, status status: %u8\n", setup_packet->d1.status, status_packet->d1.status);
+	printf("setup status: 0x%h, status status: 0x%h\n", setup_packet->d1.status, address_status->d1.status);
 }
 
 __attribute__((interrupt)) static void usb_interrupt(InterruptFrame*) {
@@ -632,7 +632,8 @@ __attribute__((interrupt)) static void usb_interrupt(InterruptFrame*) {
 		}
 	}
 	else {
-		// printf("usb error: 0x%h\n", status & ~STATUS_USBINT);
+		printf("usb error: 0x%h\n", status & ~STATUS_USBINT);
+		write16(REG_USBSTS, 0xFFFF);
 	}
 
 	write16(REG_USBSTS, STATUS_USBINT);
