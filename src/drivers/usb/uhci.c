@@ -10,6 +10,7 @@
 #include "paging/malloc.h"
 #include "lai/helpers/pci.h"
 #include "drivers/hpet.h"
+#include "common.h"
 
 static bool io_space = false;
 static uint64_t bar;
@@ -143,8 +144,8 @@ typedef struct {
 #define TD_D2_PID_MASK (0xFF)
 #define TD_D2_DEV_ADDR_MASK (0x7F)
 #define TD_D2_DEV_ADDR_SHIFT (8)
-#define TD_D2_END_POINT_MASK (0b1111)
-#define TD_D2_END_POINT_SHIFT (15)
+#define TD_D2_ENDPOINT_MASK (0b1111)
+#define TD_D2_ENDPOINT_SHIFT (15)
 #define TD_D2_DATA_TOGGLE (1 << 19)
 #define TD_D2_MAXLEN_MASK (0b11111111111)
 #define TD_D2_MAXLEN_SHIFT (21)
@@ -188,13 +189,14 @@ typedef enum {
 	QUEUE_BULK = 6
 } Queue;
 
-static UsbUhciTransferDescriptor* td_chain_starts[2 * 16] = {};
-static UsbUhciTransferDescriptor* td_chain_ends[2 * 16] = {};
+static UsbUhciTransferDescriptor* td_chain_starts[3 * 16] = {};
+static UsbUhciTransferDescriptor* td_chain_ends[3 * 16] = {};
 static uint8_t current_chain_indices[16] = {};
 static FrameEntry* frame_list;
 
 static inline void insert_td_chain(Queue queue, UsbUhciTransferDescriptor* td, UsbUhciTransferDescriptor* end) {
-	uint8_t next_chain = queue + (current_chain_indices[queue] == 0 ? 1 : 0);
+	uint8_t current_chain = current_chain_indices[queue];
+	uint8_t next_chain = queue * 3 + (current_chain > 0 ? current_chain - 1 : 2);
 	if (!td_chain_starts[next_chain]) {
 		td_chain_starts[next_chain] = td;
 		td_chain_ends[next_chain] = end;
@@ -204,19 +206,126 @@ static inline void insert_td_chain(Queue queue, UsbUhciTransferDescriptor* td, U
 	end->d1.flags |= TD_FLAG_IOC;
 }
 
-static inline void force_process_current_chains() {
-	for (uint8_t i = QUEUE_BULK; i < 16; ++i) {
-		uint8_t next_chain = current_chain_indices[i] == 0 ? 1 : 0;
-		current_chain_indices[i] = next_chain == 0 ? 1 : 0;
-		UsbUhciTransferDescriptor* td = td_chain_starts[i + next_chain];
-		if (td) queues[i].element_link_ptr = to_phys((uintptr_t) td);
-		printf("force process queue: %u8 with content: 0x%h\n", i, td);
-		td_chain_starts[i + next_chain] = NULL;
+static inline void force_process_current_chain(Queue queue) {
+	uint8_t current_chain = current_chain_indices[queue];
+	uint8_t next_chain = current_chain < 2 ? current_chain + 1 : 0;
+	UsbUhciTransferDescriptor* td = td_chain_starts[queue * 3 + current_chain];
+	if (td && queues[queue].element_link_ptr & TD_PTR_FLAG_TERMINATE) {
+		queues[queue].element_link_ptr = to_phys((uintptr_t) td);
+		td_chain_starts[queue * 3 + current_chain] = NULL;
 	}
+	else current_chain_indices[queue] = next_chain;
 }
 
 static inline void poll_td_active(volatile UsbUhciTransferDescriptor* td) {
 	while (td->d1.status & TD_STATUS_ACTIVE) __asm__ volatile("hlt" : : : "memory");
+}
+
+static inline void link_packet(UsbUhciTransferDescriptor* packet1, UsbUhciTransferDescriptor* packet2) {
+	packet1->link_ptr = (uint32_t) to_phys((uintptr_t) packet2) | TD_PTR_FLAG_DEPTH_FIRST;
+}
+
+static inline UsbUhciTransferDescriptor* create_packet(
+		void* buffer,
+		size_t size,
+		bool end,
+		uint8_t pid,
+		bool toggle,
+		uint8_t device,
+		uint8_t endpoint) {
+	UsbUhciTransferDescriptor* packet = lmalloc(sizeof(UsbUhciTransferDescriptor));
+	memset(packet, 0, sizeof(*packet));
+
+	packet->link_ptr = TD_PTR_FLAG_TERMINATE;
+	if (buffer) packet->buffer_ptr = (uint32_t) to_phys((uintptr_t) buffer);
+	packet->d1.flags = 3 << TD_FLAG_CERR_SHIFT | (end ? TD_FLAG_IOC : 0);
+	packet->d1.status = TD_STATUS_ACTIVE;
+	packet->d2 = ((size - 1) & TD_D2_MAXLEN_MASK) << TD_D2_MAXLEN_SHIFT | pid | (toggle ? TD_D2_DATA_TOGGLE : 0);
+	packet->d2 |= (uint32_t) (device & TD_D2_DEV_ADDR_MASK) << TD_D2_DEV_ADDR_SHIFT;
+	packet->d2 |= (uint32_t) (endpoint & TD_D2_ENDPOINT_MASK) << TD_D2_ENDPOINT_SHIFT;
+	return packet;
+}
+
+typedef struct {
+	uint8_t request_type;
+	uint8_t request;
+	uint16_t value;
+	uint16_t index;
+	uint16_t length;
+} DeviceRequest;
+
+typedef enum : uint8_t {
+	DIR_HOST_TO_DEVICE = 0,
+	DIR_DEVICE_TO_HOST = 1 << 7
+} RequestDirection;
+
+typedef enum : uint8_t {
+	TYPE_STANDARD = 0,
+	TYPE_CLASS = 1 << 5,
+	TYPE_VENDOR = 2 << 5
+} RequestType;
+
+typedef enum : uint8_t {
+	REC_DEVICE = 0,
+	REC_INTERFACE = 1,
+	REC_ENDPOINT = 2,
+	REC_OTHER = 3
+} RequestRecipient;
+
+typedef enum : uint8_t {
+	REQ_GET_STATUS = 0,
+	REQ_CLEAR_FEATURE = 1,
+	REG_SET_FEATURE = 3,
+	REQ_SET_ADDRESS = 5,
+	REQ_GET_DESCRIPTOR = 6,
+	REQ_SET_DESCRIPTOR = 7,
+	REQ_GET_CONF = 8,
+	REQ_SET_CONF = 9
+} Request;
+
+#define DATA_FEATURE_SELECTOR(selector) selector
+#define DATA_DEVICE_ADDR(addr) a
+#define DATA_DESC(type, index) type
+
+typedef enum : uint8_t {
+	DESC_TYPE_DEVICE = 1,
+} DescType;
+
+const inline uint16_t data_feature_selector(uint16_t selector) {
+	return selector;
+}
+
+const inline uint16_t data_device_addr(uint16_t addr) {
+	return addr;
+}
+
+const inline uint16_t data_desc(DescType type, uint8_t index) {
+	return (uint16_t) type << 8 | index;
+}
+
+const inline uint16_t data_conf_value(uint16_t value) {
+	return value;
+}
+
+static inline DeviceRequest* create_request(
+		Request request,
+		RequestDirection direction,
+		RequestType type,
+		RequestRecipient recipient,
+		uint16_t specific_data,
+		uint16_t index,
+		uint16_t length) {
+
+	DeviceRequest* req = lmalloc(sizeof(DeviceRequest));
+	*req = (DeviceRequest) {
+			.request_type = direction | type | recipient,
+			.request = request,
+			.value = specific_data,
+			.index = index,
+			.length = length
+	};
+
+	return req;
 }
 
 void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
@@ -441,122 +550,89 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 
 	printf("requesting device descriptor\n");
 
-	typedef struct {
-		uint8_t request_type;
-		uint8_t request;
-		uint16_t value;
-		uint16_t index;
-		uint16_t length;
-	} DeviceDescriptorRequest;
-
-	const uint8_t dir_host_to_device = 0 << 7;
-	const uint8_t dir_device_to_host = 1 << 7;
-	const uint8_t type_standard = 0 << 5;
-	const uint8_t type_class = 1 << 5;
-	const uint8_t type_vendor = 2 << 5;
-	const uint8_t recipient_device = 0 << 0;
-	const uint8_t recipient_interface = 1 << 0;
-	const uint8_t recipient_endpoint = 2 << 0;
-	const uint8_t recipient_other = 3 << 0;
-
-	const uint8_t GET_DESCRIPTOR = 0x6;
-
-	const uint8_t DESC_TYPE_DEVICE = 0x1;
-
-	DeviceDescriptorRequest* d = lmalloc(sizeof(DeviceDescriptorRequest));
-	*d = (DeviceDescriptorRequest) {
-			.request_type = dir_device_to_host | type_standard | recipient_device,
-			.request = GET_DESCRIPTOR,
-			.value = DESC_TYPE_DEVICE << 8,
-			.index = 0,
-			.length = 8
-	};
-
-	typedef struct {
-		uint8_t length;
-		uint8_t type;
-		uint16_t release_num;
-		uint8_t device_class;
-		uint8_t device_subclass;
-		uint8_t protocol;
-		uint8_t max_packet_size;
-		uint16_t vendor_id;
-		uint16_t product_id;
-		uint16_t device_rel;
-		uint8_t manufacturer;
-		uint8_t product;
-		uint8_t serial_num;
-		uint8_t configs;
-	} DeviceDescriptor;
+	DeviceRequest* desc_request = create_request(
+			REQ_GET_DESCRIPTOR,
+			DIR_DEVICE_TO_HOST,
+			TYPE_STANDARD,
+			REC_DEVICE,
+			data_desc(DESC_TYPE_DEVICE, 0),
+			0,
+			8);
 
 	DeviceDescriptor* out_desc = lmalloc(sizeof(DeviceDescriptor));
 	memset(out_desc, 0, sizeof(DeviceDescriptor));
 
-	UsbUhciTransferDescriptor* setup_packet = lmalloc(sizeof(UsbUhciTransferDescriptor));
-	UsbUhciTransferDescriptor* in_packet = lmalloc(sizeof(UsbUhciTransferDescriptor));
-	UsbUhciTransferDescriptor* status_packet = lmalloc(sizeof(UsbUhciTransferDescriptor));
-	memset(setup_packet, 0, sizeof(UsbUhciTransferDescriptor));
-	memset(in_packet, 0, sizeof(UsbUhciTransferDescriptor));
-	memset(status_packet, 0, sizeof(UsbUhciTransferDescriptor));
-
-	setup_packet->link_ptr = to_phys((uintptr_t) in_packet);
-	setup_packet->link_ptr |= TD_PTR_FLAG_DEPTH_FIRST;
-	in_packet->link_ptr = to_phys((uintptr_t) status_packet);
-	in_packet->link_ptr |= TD_PTR_FLAG_DEPTH_FIRST;
-	status_packet->link_ptr = TD_PTR_FLAG_TERMINATE;
-
-	setup_packet->buffer_ptr = to_phys((uintptr_t) d);
-	in_packet->buffer_ptr = to_phys((uintptr_t) out_desc);
-	status_packet->buffer_ptr = 0;
-
-	setup_packet->d1.flags = 3 << TD_FLAG_CERR_SHIFT;
-	setup_packet->d1.status = TD_STATUS_ACTIVE;
-	setup_packet->d1.act_len = 0;
-	in_packet->d1.flags = 3 << TD_FLAG_CERR_SHIFT;
-	in_packet->d1.status = TD_STATUS_ACTIVE;
-	in_packet->d1.act_len = 0;
-	status_packet->d1.flags = (3 << TD_FLAG_CERR_SHIFT) | TD_FLAG_IOC;
-	status_packet->d1.status = TD_STATUS_ACTIVE;
-	status_packet->d1.act_len = 0;
-
-	setup_packet->d2 = (8 - 1) << TD_D2_MAXLEN_SHIFT | PID_SETUP;
-	in_packet->d2 = (8 - 1) << TD_D2_MAXLEN_SHIFT | PID_IN | TD_D2_DATA_TOGGLE;
-	status_packet->d2 = TD_D2_MAXLEN_MASK << TD_D2_MAXLEN_SHIFT | TD_D2_DATA_TOGGLE | PID_OUT;
-
+	UsbUhciTransferDescriptor* setup_packet = create_packet(desc_request, 8, false, PID_SETUP, false, 0, 0);
+	UsbUhciTransferDescriptor* in_packet = create_packet(out_desc, 8, false, PID_IN, true, 0, 0);
+	UsbUhciTransferDescriptor* status_packet = create_packet(NULL, 0, true, PID_OUT, true, 0, 0);
+	link_packet(setup_packet, in_packet);
+	link_packet(in_packet, status_packet);
 	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
+
+	printf("setting device address to 1\n");
+
+	DeviceRequest* address_request = create_request(
+			REQ_SET_ADDRESS,
+			DIR_HOST_TO_DEVICE,
+			TYPE_STANDARD,
+			REC_DEVICE,
+			data_device_addr(1),
+			0,
+			0);
+
+	UsbUhciTransferDescriptor* address_setup = create_packet(
+			address_request,
+			sizeof(*address_request),
+			false,
+			PID_SETUP,
+			false,
+			0,
+			0);
+	UsbUhciTransferDescriptor* address_status = create_packet(NULL, 0, true, PID_OUT, true, 0, 0);
+	link_packet(address_setup, address_status);
+	insert_td_chain(QUEUE_CONTROL, address_setup, address_status);
 
 	// clear status
 	write16(REG_USBSTS, 0xFFFF);
 
 	write16(REG_USBCMD, CMD_RUN);
 
-	force_process_current_chains();
+	force_process_current_chain(QUEUE_CONTROL);
+	force_process_current_chain(QUEUE_CONTROL);
+	force_process_current_chain(QUEUE_CONTROL);
 
-	poll_td_active(status_packet);
+	poll_td_active(address_status);
 
 	printf("setup packet status: 0x%h\n", setup_packet->d1.status);
 	printf("in packet status: 0x%h\n", in_packet->d1.status);
 	printf("out packet status: 0x%h\n", status_packet->d1.status);
 
 	printf("class: %u8, subclass: %u8\n", out_desc->device_class, out_desc->device_subclass);
+	printf("max packet size: %u8\n", out_desc->max_packet_size);
+	printf("setup status: %u8, status status: %u8\n", setup_packet->d1.status, status_packet->d1.status);
 }
 
-__attribute__((interrupt)) static void usb_interrupt(InterruptFrame* interrupt_frame) {
+__attribute__((interrupt)) static void usb_interrupt(InterruptFrame*) {
 	uint16_t status = read16(REG_USBSTS);
 	uint16_t frame = read16(REG_FRNUM) & FRAME_LIST_CUR_NUM_MASK;
-	//if (frame > 0) frame -= 1;
-	//else frame = 1024;
-	if (status & ~STATUS_USBINT) {
-		//printf("usb error: 0x%h\n", status & ~STATUS_USBINT);
+	if (status & STATUS_USBINT) {
 		UsbUhciQueueDescriptor* queue = (UsbUhciQueueDescriptor*) to_virt(frame_list[frame] & ~0b1111);
 		uint8_t queue_index = (uintptr_t) (queue - queues) / sizeof(UsbUhciQueueDescriptor);
+
+		uint8_t current_chain = current_chain_indices[queue_index];
+		uint8_t next_chain = current_chain < 2 ? current_chain + 1 : 0;
+		current_chain_indices[queue_index] = next_chain;
+
 		if (queue->element_link_ptr & TD_PTR_FLAG_TERMINATE) {
-			uint8_t next_chain = current_chain_indices[queue_index] == 0 ? 1 : 0;
-			current_chain_indices[queue_index] = next_chain == 0 ? 1 : 0;
-			UsbUhciTransferDescriptor* td = td_chain_starts[queue_index + next_chain];
-			queue->element_link_ptr = to_phys((uintptr_t) td);
-			td_chain_starts[queue_index + next_chain] = NULL;
+			UsbUhciTransferDescriptor* td = td_chain_starts[queue_index * 3 + next_chain];
+			if (td) {
+				queue->element_link_ptr = to_phys((uintptr_t) td);
+				td_chain_starts[queue_index * 3 + next_chain] = NULL;
+			}
 		}
+	}
+	else {
+		// printf("usb error: 0x%h\n", status & ~STATUS_USBINT);
 	}
 
 	write16(REG_USBSTS, STATUS_USBINT);
