@@ -597,6 +597,9 @@ static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 
 	force_process_current_chain(QUEUE_CONTROL);
 	poll_td_active(status_packet);
+	printf("setup packet status: 0x%h\n", setup_packet->d1.status);
+	printf("in packet status: 0x%h\n", in_packet->d1.status);
+	printf("out packet status: 0x%h\n", status_packet->d1.status);
 
 	reset_port(port_offset);
 
@@ -624,8 +627,9 @@ static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 	insert_td_chain(QUEUE_CONTROL, address_setup, address_status);
 
 	force_process_current_chain(QUEUE_CONTROL);
-
 	poll_td_active(address_status);
+	printf("address setup packet status: 0x%h\n", address_setup->d1.status);
+	printf("address status: 0x%h\n", address_status->d1.status);
 
 	free(address_status, sizeof(*address_status));
 	free(address_setup, sizeof(*address_setup));
@@ -637,6 +641,7 @@ static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 	desc_request->length = out_desc->length;
 	setup_packet = create_packet(desc_request, sizeof(*desc_request), false, PID_SETUP, false, dev_num, 0);
 	in_packet = create_packet(out_desc, out_desc->max_packet_size, false, PID_IN, true, dev_num, 0);
+	link_packet(setup_packet, in_packet);
 
 	UsbUhciTransferDescriptor* end = in_packet;
 	bool toggle = false;
@@ -652,19 +657,14 @@ static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 	status_packet = create_packet(NULL, 0, true, PID_OUT, true, dev_num, 0);
 	link_packet(end, status_packet);
 
-	insert_td_chain(QUEUE_CONTROL, in_packet, status_packet);
+	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
 
 	force_process_current_chain(QUEUE_CONTROL);
 
 	poll_td_active(status_packet);
 
-	printf("setup packet status: 0x%h\n", setup_packet->d1.status);
-	printf("in packet status: 0x%h\n", in_packet->d1.status);
-	printf("out packet status: 0x%h\n", status_packet->d1.status);
-
 	printf("class: %u8, subclass: %u8\n", out_desc->device_class, out_desc->device_subclass);
 	printf("max packet size: %u8\n", out_desc->max_packet_size);
-	printf("setup status: 0x%h, status status: 0x%h\n", setup_packet->d1.status, address_status->d1.status);
 
 	return out_desc;
 }
