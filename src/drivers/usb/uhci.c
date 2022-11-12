@@ -11,6 +11,7 @@
 #include "lai/helpers/pci.h"
 #include "drivers/hpet.h"
 #include "common.h"
+#include "paging/pool.h"
 
 static bool io_space = false;
 static uint64_t bar;
@@ -231,6 +232,8 @@ static inline void link_packet(UsbUhciTransferDescriptor* packet1, UsbUhciTransf
 	packet1->link_ptr = (uint32_t) to_phys((uintptr_t) packet2) | TD_PTR_FLAG_DEPTH_FIRST;
 }
 
+static MemoryPool pool = {};
+
 static inline UsbUhciTransferDescriptor* create_packet(
 		void* buffer,
 		size_t size,
@@ -239,9 +242,38 @@ static inline UsbUhciTransferDescriptor* create_packet(
 		bool toggle,
 		uint8_t device,
 		uint8_t endpoint) {
-	UsbUhciTransferDescriptor* packet = lmalloc(sizeof(UsbUhciTransferDescriptor));
+	void* mem = pool_get(&pool);
+	if (!mem) {
+		for (size_t i = 0; i < 50; ++i) {
+			pool_free(&pool, lmalloc(sizeof(UsbUhciTransferDescriptor)));
+		}
+		mem = pool_get(&pool);
+	}
+
+	UsbUhciTransferDescriptor* packet = (UsbUhciTransferDescriptor*) mem;
 	memset(packet, 0, sizeof(*packet));
 
+	packet->link_ptr = TD_PTR_FLAG_TERMINATE;
+	if (buffer) packet->buffer_ptr = (uint32_t) to_phys((uintptr_t) buffer);
+	packet->d1.flags = 3 << TD_FLAG_CERR_SHIFT | (end ? TD_FLAG_IOC : 0);
+	packet->d1.status = TD_STATUS_ACTIVE;
+	packet->d2 = ((size - 1) & TD_D2_MAXLEN_MASK) << TD_D2_MAXLEN_SHIFT | pid | (toggle ? TD_D2_DATA_TOGGLE : 0);
+	packet->d2 |= (uint32_t) (device & TD_D2_DEV_ADDR_MASK) << TD_D2_DEV_ADDR_SHIFT;
+	packet->d2 |= (uint32_t) (endpoint & TD_D2_ENDPOINT_MASK) << TD_D2_ENDPOINT_SHIFT;
+	return packet;
+}
+
+static inline UsbUhciTransferDescriptor* update_packet(
+		UsbUhciTransferDescriptor* packet,
+		void* buffer,
+		size_t size,
+		bool end,
+		uint8_t pid,
+		bool toggle,
+		uint8_t device,
+		uint8_t endpoint
+		) {
+	memset(packet, 0, sizeof(UsbUhciTransferDescriptor));
 	packet->link_ptr = TD_PTR_FLAG_TERMINATE;
 	if (buffer) packet->buffer_ptr = (uint32_t) to_phys((uintptr_t) buffer);
 	packet->d1.flags = 3 << TD_FLAG_CERR_SHIFT | (end ? TD_FLAG_IOC : 0);
@@ -295,6 +327,14 @@ typedef enum : uint8_t {
 
 typedef enum : uint8_t {
 	DESC_TYPE_DEVICE = 1,
+	DESC_TYPE_CONFIG = 2,
+	DESC_TYPE_STRING = 3,
+	DESC_TYPE_INTERFACE = 4,
+	DESC_TYPE_ENDPOINT = 5,
+	DESC_TYPE_DEVICE_QUAL = 6,
+	DESC_TYPE_OTHER_SPEED_CONFIG = 7,
+	DESC_TYPE_INTERFACE_POWER = 8,
+	DESC_TYPE_OTG = 9
 } DescType;
 
 const inline uint16_t data_feature_selector(uint16_t selector) {
@@ -343,6 +383,7 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 		header->BAR4 = 0xFFFFFFFF;
 		size = ~(header->BAR4 & 0xFFFFFFFC) + 1;
 		header->BAR4 = original_bar;
+		(void) size;
 	}
 	else if ((header->BAR4 >> 1 & 0b11) == 2) {
 		bar = (header->BAR4 & 0xFFFFFFF0) + ((uint64_t) (header->BAR5 & 0xFFFFFFFF) << 32);
@@ -366,7 +407,7 @@ void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
 					to_virt(bar + i),
 					PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_WRITE_THROUGH);
 		}
-		bar += 0xFFFF800000000000;
+		bar = to_virt(bar);
 	}
 	else if (!io_space) {
 		for (uint32_t i = 0; i < size; i += 0x1000) {
@@ -575,6 +616,137 @@ static inline uint8_t get_free_device_number() {
 	return 0;
 }
 
+static inline StringDescriptor* get_string_desc_utf16(uint8_t device, uint8_t index, uint16_t lang, DeviceDescriptor* desc) {
+	DeviceRequest* request = create_request(
+			REQ_GET_DESCRIPTOR,
+			DIR_DEVICE_TO_HOST,
+			TYPE_STANDARD,
+			REC_DEVICE,
+			data_desc(DESC_TYPE_STRING, index),
+			lang,
+			2
+			);
+
+	StringDescriptor* out_desc = lmalloc(sizeof(StringDescriptor));
+	memset(out_desc, 0, sizeof(StringDescriptor));
+
+	UsbUhciTransferDescriptor* setup_packet = create_packet(request, 8, false, PID_SETUP, false, device, 0);
+	UsbUhciTransferDescriptor* in_packet = create_packet(out_desc, 8, false, PID_IN, true, device, 0);
+	UsbUhciTransferDescriptor* status_packet = create_packet(NULL, 0, true, PID_OUT, true, device, 0);
+	link_packet(setup_packet, in_packet);
+	link_packet(in_packet, status_packet);
+	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
+
+	force_process_current_chain(QUEUE_CONTROL);
+	poll_td_active(status_packet);
+
+	request->length = out_desc->size;
+	lfree(out_desc, sizeof(StringDescriptor));
+	out_desc = lmalloc(request->length + 2);
+	memset(out_desc, 0, request->length + 2);
+	out_desc->size = request->length;
+	update_packet(setup_packet, request, 8, false, PID_SETUP, false, device, 0);
+
+	update_packet(in_packet, out_desc, desc->max_packet_size, false, PID_IN, true, device, 0);
+	link_packet(setup_packet, in_packet);
+
+	UsbUhciTransferDescriptor* end = in_packet;
+	bool toggle = false;
+	for (uint8_t i = 0; i < out_desc->size - desc->max_packet_size; i += desc->max_packet_size) {
+		UsbUhciTransferDescriptor* in_packet_2 = create_packet(
+				(void*) ((uintptr_t) out_desc + 8 + i),
+				desc->max_packet_size, false, PID_IN, toggle, device, 0);
+		link_packet(end, in_packet_2);
+		toggle = !toggle;
+		end = in_packet_2;
+	}
+
+	update_packet(status_packet, NULL, 0, true, PID_OUT, true, device, 0);
+	link_packet(end, status_packet);
+
+	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
+
+	force_process_current_chain(QUEUE_CONTROL);
+
+	poll_td_active(status_packet);
+
+	UsbUhciTransferDescriptor* packet = setup_packet;
+	while (true) {
+		uintptr_t next = packet->link_ptr & ~0b1111;
+		pool_free(&pool, packet);
+		if (!next) break;
+		packet = (UsbUhciTransferDescriptor*) to_virt(next);
+	}
+	lfree(request, sizeof(DeviceRequest));
+
+	return out_desc;
+}
+
+static inline StringLanguageDescriptor* get_languages(uint8_t device, DeviceDescriptor* desc) {
+	DeviceRequest* request = create_request(
+			REQ_GET_DESCRIPTOR,
+			DIR_DEVICE_TO_HOST,
+			TYPE_STANDARD,
+			REC_DEVICE,
+			data_desc(DESC_TYPE_STRING, 0),
+			0,
+			8
+			);
+
+	StringLanguageDescriptor* out_desc = lmalloc(sizeof(StringLanguageDescriptor));
+	memset(out_desc, 0, sizeof(StringLanguageDescriptor));
+
+	UsbUhciTransferDescriptor* setup_packet = create_packet(request, 8, false, PID_SETUP, false, device, 0);
+	UsbUhciTransferDescriptor* in_packet = create_packet(out_desc, 8, false, PID_IN, true, device, 0);
+	UsbUhciTransferDescriptor* status_packet = create_packet(NULL, 0, true, PID_OUT, true, device, 0);
+	link_packet(setup_packet, in_packet);
+	link_packet(in_packet, status_packet);
+	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
+
+	force_process_current_chain(QUEUE_CONTROL);
+	poll_td_active(status_packet);
+
+	request->length = out_desc->size;
+	lfree(out_desc, sizeof(StringLanguageDescriptor));
+	out_desc = lmalloc(request->length);
+	out_desc->size = request->length;
+	update_packet(setup_packet, request, 8, false, PID_SETUP, false, device, 0);
+
+	update_packet(in_packet, out_desc, desc->max_packet_size, false, PID_IN, true, device, 0);
+	link_packet(setup_packet, in_packet);
+
+	UsbUhciTransferDescriptor* end = in_packet;
+	bool toggle = false;
+	for (uint8_t i = 0; i < out_desc->size - desc->max_packet_size; i += desc->max_packet_size) {
+		UsbUhciTransferDescriptor* in_packet_2 = create_packet(
+				(void*) ((uintptr_t) out_desc + 8 + i),
+				desc->max_packet_size, false, PID_IN, toggle, device, 0);
+		link_packet(end, in_packet_2);
+		toggle = !toggle;
+		end = in_packet_2;
+	}
+
+	update_packet(status_packet, NULL, 0, true, PID_OUT, true, device, 0);
+	link_packet(end, status_packet);
+
+	insert_td_chain(QUEUE_CONTROL, setup_packet, status_packet);
+
+	force_process_current_chain(QUEUE_CONTROL);
+
+	poll_td_active(status_packet);
+
+	UsbUhciTransferDescriptor* packet = setup_packet;
+	while (true) {
+		uintptr_t next = packet->link_ptr & ~0b1111;
+		pool_free(&pool, packet);
+		if (!next) break;
+		packet = (UsbUhciTransferDescriptor*) to_virt(next);
+	}
+	lfree(request, sizeof(DeviceRequest));
+
+	return out_desc;
+}
+
 static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 	DeviceRequest* desc_request = create_request(
 			REQ_GET_DESCRIPTOR,
@@ -631,12 +803,12 @@ static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 	printf("address setup packet status: 0x%h\n", address_setup->d1.status);
 	printf("address status: 0x%h\n", address_status->d1.status);
 
-	free(address_status, sizeof(*address_status));
-	free(address_setup, sizeof(*address_setup));
-	free(setup_packet, sizeof(*setup_packet));
-	free(in_packet, sizeof(*in_packet));
-	free(status_packet, sizeof(*status_packet));
-	free(address_request, sizeof(*address_request));
+	pool_free(&pool, setup_packet);
+	pool_free(&pool, in_packet);
+	pool_free(&pool, status_packet);
+	pool_free(&pool, address_setup);
+	pool_free(&pool, address_status);
+	lfree(address_request, sizeof(DeviceRequest));
 
 	desc_request->length = out_desc->length;
 	setup_packet = create_packet(desc_request, sizeof(*desc_request), false, PID_SETUP, false, dev_num, 0);
@@ -663,8 +835,32 @@ static inline DeviceDescriptor* setup_device(uint8_t port_offset) {
 
 	poll_td_active(status_packet);
 
+	UsbUhciTransferDescriptor* packet = setup_packet;
+	while (true) {
+		uintptr_t next = packet->link_ptr & ~0b1111;
+		pool_free(&pool, packet);
+		if (!next) break;
+		packet = (UsbUhciTransferDescriptor*) to_virt(next);
+	}
+	lfree(desc_request, sizeof(DeviceRequest));
+
 	printf("class: %u8, subclass: %u8\n", out_desc->device_class, out_desc->device_subclass);
 	printf("max packet size: %u8\n", out_desc->max_packet_size);
+
+	StringLanguageDescriptor* langs = get_languages(dev_num, out_desc);
+
+	printf("lang0: 0x%h\n", langs->lang_ids[0]);
+
+	StringDescriptor* product = get_string_desc_utf16(dev_num, out_desc->product, langs->lang_ids[0], out_desc);
+	StringDescriptor* manufacturer = get_string_desc_utf16(dev_num, out_desc->manufacturer, langs->lang_ids[0], out_desc);
+	for (uint16_t* s = manufacturer->string; *s; ++s) {
+		printf("%c", (char) *s);
+	}
+	printf(" ");
+	for (uint16_t* s = product->string; *s; ++s) {
+		printf("%c", (char) *s);
+	}
+	printf("\n");
 
 	return out_desc;
 }
