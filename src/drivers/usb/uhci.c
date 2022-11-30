@@ -375,6 +375,8 @@ static inline DeviceRequest* create_request(
 }
 
 void initialize_usb_uhci(PCIDeviceHeader0* header, PciDeviceInfo info) {
+	printf("UHCI DRIVER IS NOT IN A WORKING STATE YET\n");
+	return;
 	uint32_t size;
 	if (header->BAR4 & 1) {
 		bar = header->BAR4 & 0xFFFFFFFC;

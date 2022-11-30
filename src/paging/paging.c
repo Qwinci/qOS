@@ -56,6 +56,7 @@ void pmap(uintptr_t physical_address, uintptr_t virtual_address, PageFlag flags)
 
 	((uint64_t*) ((uintptr_t) pt_entry + p_offset))[pt_offset] = physical_address | flags;
 }
+
 void punmap(uintptr_t virtual_address) {
 	virtual_address >>= 12;
 	uint64_t pt_offset = virtual_address & 0x1FF;

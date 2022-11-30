@@ -1,7 +1,9 @@
 #pragma once
 #include "assert.h"
+#include "paging/memory.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 bool initialize_pci(void* rsdp);
 void enumerate_pci();
@@ -82,6 +84,21 @@ typedef struct {
 	uint64_t pending;
 } PciMsiCapability;
 
+typedef struct {
+	uint8_t id;
+	uint8_t next;
+	struct {
+		uint16_t table_size : 11;
+		uint16_t reserved : 3;
+		uint16_t func_mask : 1;
+		uint16_t enable : 1;
+	} msg_control;
+	uint32_t bir : 3;
+	uint32_t table_offset : 29;
+	uint32_t pending_bit_bir : 3;
+	uint32_t pending_bit_offset : 29;
+} PciMsiXCapability;
+
 #define MSI_CTRL_ENABLE (1 << 0)
 #define MSI_CTRL_MM_1_CAPABLE (0b000 << 1)
 #define MSI_CTRL_MM_2_CAPABLE (0b001 << 1)
@@ -111,5 +128,67 @@ typedef struct {
 #define PCI_CMD_INTERRUPT_DISABLE (1 << 10)
 
 PciMsiCapability* pci_get_msi_cap0(PCIDeviceHeader0* header);
+PciMsiXCapability* pci_get_msi_x_cap0(PCIDeviceHeader0* header);
 PciPmCapability* pci_get_pm_cap0(PCIDeviceHeader0* header);
 PCIDeviceHeader* pci_get_dev_header(uint16_t seg, uint8_t bus, uint8_t slot, uint8_t fun);
+
+static inline uint32_t pci_get_bar_size(volatile uint32_t* bar) {
+	uint32_t original_bar = *bar;
+	*bar = 0xFFFFFFFF;
+	uint32_t new_bar = *bar;
+	uint32_t size = ~(new_bar & 0xFFFFFFF0) + 1;
+	*bar = original_bar;
+	return size;
+}
+
+static inline void* pci_map_bar32(volatile uint32_t* bar) {
+	uint32_t size = pci_get_bar_size(bar);
+	if (*bar & 1 << 3) {
+		for (uint32_t i = 0; i < size; i += 0x1000) {
+			pmap(
+					(uintptr_t) *bar + i,
+					to_virt((uintptr_t) *bar + i),
+					PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_WRITE_THROUGH);
+		}
+	}
+	else {
+		for (uint32_t i = 0; i < size; i += 0x1000) {
+			pmap(
+					(uintptr_t) *bar + i,
+					to_virt((uintptr_t) *bar + i),
+					PAGEFLAG_PRESENT | PAGEFLAG_RW);
+		}
+	}
+	return (void*) to_virt(*bar & 0xFFFFFFF0);
+}
+
+static inline void* pci_map_bar64(volatile uint32_t* bar0, volatile uint32_t* bar1) {
+	uint32_t size = pci_get_bar_size(bar0);
+	uintptr_t bar = (*bar0 & 0xFFFFFFF0) + ((uint64_t) (*bar1 & 0xFFFFFFFF) << 32);
+	if (*bar0 & 1 << 3) {
+		for (uint32_t i = 0; i < size; i += 0x1000) {
+			pmap(
+					(uintptr_t) bar + i,
+					to_virt((uintptr_t) bar + i),
+					PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_WRITE_THROUGH);
+		}
+	}
+	else {
+		for (uint32_t i = 0; i < size; i += 0x1000) {
+			pmap(
+					(uintptr_t) bar + i,
+					to_virt((uintptr_t) bar + i),
+					PAGEFLAG_PRESENT | PAGEFLAG_RW);
+		}
+	}
+	return (void*) to_virt(bar);
+}
+
+static inline bool pci_is_bar64(uint32_t bar) {
+	return (bar >> 1 & 0b11) == 2;
+}
+
+static inline uintptr_t pci_map_bar(volatile uint32_t* bar0, volatile uint32_t* bar1) {
+	if (pci_is_bar64(*bar0)) return (uintptr_t) pci_map_bar64(bar0, bar1);
+	else return (uintptr_t) pci_map_bar32(bar0);
+}

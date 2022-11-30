@@ -17,6 +17,9 @@ static inline const char* get_vendor(uint16_t id) {
 		case 0x14C3:
 			name = "MEDIATEK Corp.";
 			break;
+		case 0x1B36:
+			name = "QEMU";
+			break;
 		case 0x1C5C:
 			name = "SK hynix";
 			break;
@@ -148,6 +151,12 @@ static inline const char* get_device(uint16_t id, uint16_t vendor_id) {
 	else if (vendor_id == 0x14C3) {
 		if (id == 0x7961) {
 			name = "MT7921 802.11ax PCI Express Wireless Network Adapter";
+		}
+		else name = NULL;
+	}
+	else if (vendor_id == 0x1B36) {
+		if (id == 0xD) {
+			name = "XHCI Host Controller";
 		}
 		else name = NULL;
 	}

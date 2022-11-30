@@ -25,17 +25,13 @@ static inline const size_t get_size_index(size_t size) {
 	else return 9;
 }
 
+static inline size_t pow(size_t value, uint8_t pow) {
+	for (size_t orig = value; pow > 1; --pow) value *= orig;
+	return value;
+}
+
 static inline const size_t index_to_size(size_t index) {
-	if (index == 0) return 8;
-	else if (index == 1) return 16;
-	else if (index == 2) return 32;
-	else if (index == 3) return 64;
-	else if (index == 4) return 128;
-	else if (index == 5) return 256;
-	else if (index == 6) return 512;
-	else if (index == 7) return 1024;
-	else if (index == 8) return 2048;
-	else return 0;
+	return index < 9 ? pow(2, index + 3) : 0;
 }
 
 static FreeList free_lists[9] = {};

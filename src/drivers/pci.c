@@ -82,7 +82,7 @@ void enumerate_function(uintptr_t base, uint8_t function) {
 
 		}
 		else if (header->prog_if >= 0x30 && header->prog_if < 0x40) {
-
+			initialize_usb_xhci(header0);
 		}
 	}
 }
@@ -182,6 +182,22 @@ PciMsiCapability* pci_get_msi_cap0(PCIDeviceHeader0* header) {
 		if (id == PCI_CAP_MSI) {
 			PciMsiCapability* msi = (PciMsiCapability*) ((uintptr_t) header + offset);
 			return msi;
+		}
+		uint8_t next = *(uint8_t*) ((uintptr_t) header + offset + 1);
+		offset = next;
+		if (!next) break;
+	}
+	return NULL;
+}
+
+PciMsiXCapability* pci_get_msi_x_cap0(PCIDeviceHeader0* header) {
+	if ((header->header.status & 1 << 4) == 0) return NULL;
+	uint8_t offset = header->capabilities_pointer & 0b11111100;
+	while (true) {
+		uint8_t id = *(uint8_t*) ((uintptr_t) header + offset);
+		if (id == PCI_CAP_MSI_X) {
+			PciMsiXCapability* msi_x = (PciMsiXCapability*) ((uintptr_t) header + offset);
+			return msi_x;
 		}
 		uint8_t next = *(uint8_t*) ((uintptr_t) header + offset + 1);
 		offset = next;

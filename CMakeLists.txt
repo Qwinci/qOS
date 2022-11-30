@@ -51,13 +51,14 @@ endif()
 
 add_custom_target(run_kvm
         COMMAND qemu-system-x86_64 -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
-        -m 2G -machine q35 -cpu host,invtsc -smp 2 -enable-kvm -d int -no-reboot -no-shutdown -device ich9-usb-uhci1
+        -m 2G -machine q35 -cpu host,invtsc -smp 2 -enable-kvm -d int -no-reboot -no-shutdown
+        -device qemu-xhci -device usb-kbd
         DEPENDS qos
         USES_TERMINAL VERBATIM)
 add_custom_target(run
         COMMAND qemu-system-x86_64 -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         -m 4G -machine q35 -cpu qemu64 -smp 2 -d int -no-reboot -no-shutdown
-        -device ich9-usb-uhci1 -device usb-kbd -device sb16
+        -device qemu-xhci -device usb-kbd -device sb16
         DEPENDS qos
         USES_TERMINAL VERBATIM)
 add_custom_target(debug
