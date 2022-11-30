@@ -10,24 +10,19 @@ typedef struct {
 	Node* root;
 } FreeList;
 
-// 8 16 32 64 128 256 512 1024 2048
-
-static inline const size_t get_size_index(size_t size) {
-	if (size <= 8) return 0;
-	else if (size <= 16) return 1;
-	else if (size <= 32) return 2;
-	else if (size <= 64) return 3;
-	else if (size <= 128) return 4;
-	else if (size <= 256) return 5;
-	else if (size <= 512) return 6;
-	else if (size <= 1024) return 7;
-	else if (size <= 2048) return 8;
-	else return 9;
-}
-
 static inline size_t pow(size_t value, uint8_t pow) {
 	for (size_t orig = value; pow > 1; --pow) value *= orig;
 	return value;
+}
+
+// 8 16 32 64 128 256 512 1024 2048
+static inline const size_t get_size_index(size_t size) {
+	if (size > 2048) return 9;
+	uint8_t i = 3;
+	while (size > pow(2, i)) {
+		i++;
+	}
+	return i - 3;
 }
 
 static inline const size_t index_to_size(size_t index) {
