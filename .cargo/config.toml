@@ -1,0 +1,5 @@
+[build]
+target = "x86_64-unknown-none"
+#rustflags = ["-C", "link-arg=-T.cargo/kernel.ld"]
+[target.x86_64-unknown-none]
+rustflags = ["-C", "link-arg=--image-base=0xffffffff80000000"]
