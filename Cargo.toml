@@ -6,3 +6,30 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+qos_macros = { git = "https://github.com/Qwinci/qOS", branch = "rust-macros" }
+
+[package.metadata.qemu_runner]
+limine-branch = "v4.x-branch-binary"
+
+extra-files = [
+    "fonts/Tamsyn8x16r.psf",
+    "limine.cfg"
+]
+
+test-success-exit-code = 33
+
+test-args = [
+    "-device", "isa-debug-exit,iobase=0xf4,iosize=0x4", "-serial", "stdio",
+    "-display", "none"
+]
+
+run-args = ["-d", "int", "-no-reboot", "-no-shutdown"]
+
+run-command = ["qemu-system-x86_64",
+    "-boot", "d",
+    "-cdrom", "{}",
+    "-m", "2G",
+    "-machine", "q35",
+    "-cpu", "qemu64",
+    "-smp", "2"
+]

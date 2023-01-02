@@ -1,18 +1,21 @@
 #![allow(unused)]
 
+use alloc::boxed::Box;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
 use core::hint::unreachable_unchecked;
 use core::ptr::NonNull;
 use crate::allocator::page_allocator::PageAllocator;
 use crate::limine::MemType;
-use crate::start::MEM_MAP_REQUEST;
+use crate::paging::{Flags, PageTable, PhysAddr, VirtAddr};
+use crate::start::{HHDM_REQUEST, MEM_MAP_REQUEST};
 use crate::sync::Mutex;
-use crate::utils::cold;
+use crate::utils::{set_high_half_offset, SIZE_2MB};
+use crate::{paging, print, println};
 
 mod page_allocator {
 	use core::ptr::NonNull;
-	use crate::utils::{cold, HIGH_HALF_OFFSET};
+	use crate::paging::{PhysAddr, VirtAddr};
 
 	struct Node {
 		size: usize,
@@ -59,7 +62,6 @@ mod page_allocator {
 
 		unsafe fn insert_node(&mut self, node: NonNull<Node>) {
 			if self.root.is_none() {
-				cold();
 				self.root = Some(node);
 				self.end = self.root;
 				return;
@@ -131,7 +133,7 @@ mod page_allocator {
 					self.remove_node(n);
 
 					if remaining > 0 {
-						self.add_memory(ptr as usize + count * 0x1000, remaining * 0x1000);
+						self.add_memory_internal(ptr as usize + count * 0x1000, remaining * 0x1000);
 					}
 
 					return ptr as *mut u8;
@@ -151,7 +153,6 @@ mod page_allocator {
 					let remaining = (*ptr).size - count;
 					if remaining == 0 {
 						self.remove_node(n);
-						cold();
 					}
 					else {
 						(*ptr).size = remaining;
@@ -164,29 +165,7 @@ mod page_allocator {
 			core::ptr::null_mut()
 		}
 
-		unsafe fn switch_mapping(&mut self) {
-			if let Some(root) = self.root {
-				self.root = Some(NonNull::new_unchecked(root.as_ptr().byte_add(HIGH_HALF_OFFSET)));
-				self.end = Some(NonNull::new_unchecked(self.end.unwrap_unchecked().as_ptr().byte_add(HIGH_HALF_OFFSET)));
-
-				let mut node = self.root;
-				while let Some(n) = node {
-					let n_ptr = n.as_ptr();
-					if let Some(next) = (*n_ptr).next {
-						(*n_ptr).next = Some(NonNull::new_unchecked(next.as_ptr().byte_add(HIGH_HALF_OFFSET)));
-					}
-					if let Some(prev) = (*n_ptr).prev {
-						(*n_ptr).prev = Some(NonNull::new_unchecked(prev.as_ptr().byte_add(HIGH_HALF_OFFSET)));
-					}
-					node = (*n_ptr).next;
-				}
-			}
-			else {
-				cold();
-			}
-		}
-
-		pub(crate) unsafe fn add_memory(&mut self, base: usize, size: usize) {
+		unsafe fn add_memory_internal(&mut self, base: usize, size: usize) {
 			let count = size / 0x1000;
 			if count == 0 {
 				return;
@@ -197,9 +176,23 @@ mod page_allocator {
 			self.insert_node(NonNull::new_unchecked(node));
 		}
 
+		pub unsafe fn add_memory(&mut self, base: PhysAddr, size: usize) {
+			let count = size / 0x1000;
+			if count == 0 {
+				return;
+			}
+
+			let virt_addr = base.as_virt();
+			let base = virt_addr.as_usize();
+
+			let node = base as *mut Node;
+			node.write(Node { prev: None, next: None, size: count });
+			self.insert_node(NonNull::new_unchecked(node));
+		}
+
 		pub fn free_pages(&mut self, pages: *mut u8, count: usize) {
 			unsafe {
-				self.add_memory(pages as usize, count * 0x1000)
+				self.add_memory_internal(pages as usize, count * 0x1000)
 			}
 		}
 
@@ -235,31 +228,11 @@ pub struct Allocator<const LOW: bool = false> {
 }
 
 const fn size_to_index(size: usize) -> usize {
-	if size <= 8 { 0 }
-	else if size <= 16 { 1 }
-	else if size <= 32 { 2 }
-	else if size <= 64 { 3 }
-	else if size <= 128 { 4 }
-	else if size <= 256 { 5 }
-	else if size <= 512 { 6 }
-	else if size <= 1024 { 7 }
-	else if size <= 2048 { 8 }
-	else { cold(); 8 }
+	size.ilog2().saturating_sub(3) as usize
 }
 
 const fn index_to_size(index: usize) -> usize {
-	match index {
-		0 => 8,
-		1 => 16,
-		2 => 32,
-		3 => 64,
-		4 => 128,
-		5 => 256,
-		6 => 512,
-		7 => 1024,
-		8 => 2048,
-		_ => unsafe { unreachable_unchecked() }
-	}
+	8 << index
 }
 
 impl<const LOW: bool> Allocator<LOW> {
@@ -280,7 +253,6 @@ impl<const LOW: bool> Allocator<LOW> {
 			}
 		}
 		else if index == FREELIST_COUNT - 1 {
-			cold();
 			if parent_ptr as usize + index_to_size(index) == inserted_node.as_ptr() as usize {
 				if let Some(prev) = prev {
 					(*prev.as_ptr()).next = (*inserted_node.as_ptr()).next
@@ -369,12 +341,16 @@ impl<const LOW: bool> Allocator<LOW> {
 	}
 
 	fn alloc_size(&self, size: usize) -> *mut u8 {
+		if size == 0 {
+			return core::ptr::null_mut()
+		}
+
 		if size >= 0x1000 {
 			let count = (size + 0x1000 - 1) / 0x1000;
 			if LOW {
-				PAGE_ALLOCATOR.lock().alloc_pages(count)
-			} else {
 				PAGE_ALLOCATOR.lock().alloc_pages_low(count)
+			} else {
+				PAGE_ALLOCATOR.lock().alloc_pages(count)
 			}
 		}
 		else {
@@ -385,6 +361,9 @@ impl<const LOW: bool> Allocator<LOW> {
 	}
 
 	fn dealloc_size(&self, ptr: *mut u8, size: usize) {
+		if size == 0 {
+			return;
+		}
 		if size >= 0x1000 {
 			let count = (size + 0x1000 - 1) / 0x1000;
 			PAGE_ALLOCATOR.lock().free_pages(ptr, count);
@@ -418,14 +397,61 @@ pub static LOW_ALLOCATOR: Allocator<true> = Allocator::new();
 pub static PAGE_ALLOCATOR: Mutex<PageAllocator> = Mutex::new(PageAllocator::new());
 
 pub fn init_memory() {
+	set_high_half_offset(HHDM_REQUEST.response.get().unwrap().offset as usize);
 	let memmap = MEM_MAP_REQUEST.response.get().unwrap();
 	let mut allocator = PAGE_ALLOCATOR.lock();
 	for i in 0..memmap.entry_count as usize {
 		unsafe {
 			let entry = &**memmap.entries.add(i);
 			if entry.mem_type == MemType::Usable {
-				allocator.add_memory(entry.base as usize, entry.length as usize);
+				allocator.add_memory(PhysAddr::new(entry.base as usize), entry.length as usize);
 			}
 		}
 	}
+
+	drop(allocator);
+
+	let mut page_table = Box::new(PageTable::new());
+
+	for i in 0..memmap.entry_count as usize {
+		let entry = unsafe {
+			&**memmap.entries.add(i)
+		};
+
+		let mut base = entry.base as usize;
+		let mut aligned = false;
+		if base & (SIZE_2MB - 1) != 0 {
+			base &= !(SIZE_2MB - 1);
+			aligned = true;
+		}
+		let phys = PhysAddr::new(base);
+		let mut flags = paging::Flags::new();
+		flags.set_present(true);
+		flags.set_rw(true);
+		flags.set_huge(true);
+
+		let mut i = 0;
+		while i < entry.length as usize {
+			let phys = phys.offset(i as isize);
+			page_table.map(phys, phys.as_virt(), flags);
+			if !aligned {
+				i += SIZE_2MB;
+			}
+			else {
+				aligned = false;
+			}
+		}
+	}
+
+	let mut i = 0;
+	while i < 0x100000000 {
+		let phys = PhysAddr::new(i);
+		page_table.map(phys, phys.as_virt(), Flags::rw | Flags::huge);
+		i += SIZE_2MB;
+	}
+
+	let page_table = Box::leak(page_table);
+	println!("before");
+	crate::x86::reg::Cr3::write(page_table);
+	//println!("after");
 }

@@ -4,7 +4,7 @@ use core::ffi::CStr;
 use core::fmt;
 use core::fmt::{Error, Write};
 use crate::start::{FONT, FRAMEBUFFER_REQUEST, MODULE_REQUEST};
-use crate::sync::{LazyLock, Mutex};
+use crate::sync::{Lazy, LazyLock, Mutex};
 
 pub struct Framebuffer {
 	pub width: usize,
@@ -124,7 +124,7 @@ impl Write for Writer {
 	}
 }
 
-static WRITER: LazyLock<Mutex<Writer>> = LazyLock::new(|| {
+static WRITER: Lazy<Mutex<Writer>> = Lazy::new(|| {
 	let fbs = FRAMEBUFFER_REQUEST.response.get().unwrap();
 	let fb = unsafe { &**fbs.framebuffers };
 
@@ -172,9 +172,9 @@ static WRITER: LazyLock<Mutex<Writer>> = LazyLock::new(|| {
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => {{
+    ($($arg:tt)*) => {
 	    $crate::fb::_print(format_args!($($arg)*));
-    }};
+    };
 }
 
 #[macro_export]
@@ -182,9 +182,9 @@ macro_rules! println {
     () => {
 	    $crate::print!("\n")
     };
-	($($arg:tt)*) => {{
+	($($arg:tt)*) => {
 		$crate::print!("{}\n", format_args!($($arg)*));
-	}};
+	};
 }
 
 pub fn _print(args: fmt::Arguments) {

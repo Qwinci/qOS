@@ -1,7 +1,8 @@
 #![allow(unused)]
 
 use core::arch::x86_64::_mm_pause;
-use core::cell::{LazyCell, UnsafeCell};
+use core::cell::{Cell, LazyCell, UnsafeCell};
+use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -78,6 +79,36 @@ impl<T> Mutex<T> {
 }
 
 unsafe impl<T> Sync for Mutex<T> {}
+
+pub struct Lazy<T: Sync, F = fn() -> T> {
+	init: Cell<Option<F>>,
+	value: UnsafeCell<MaybeUninit<T>>
+}
+
+impl<T: Sync, F: FnOnce() -> T> Lazy<T, F> {
+	pub const fn new(init: F) -> Self {
+		Self { init: Cell::new(Some(init)), value: UnsafeCell::new(MaybeUninit::uninit()) }
+	}
+
+	pub fn force(&self) -> &T {
+		match self.init.take() {
+			Some(init) => unsafe { return (*self.value.get()).write(init()) }
+			None => unsafe { (*self.value.get()).assume_init_ref() }
+		}
+	}
+
+	pub fn get(&self) -> &T {
+		self.force()
+	}
+
+	pub unsafe fn get_unchecked(&self) -> &T {
+		unsafe {
+			(*self.value.get()).assume_init_ref()
+		}
+	}
+}
+
+unsafe impl<T: Sync, F: FnOnce() -> T> Sync for Lazy<T, F> {}
 
 pub struct LazyLock<T, F = fn() -> T> {
 	lock: Mutex<()>,

@@ -199,3 +199,24 @@ pub struct KernelAddressResponse {
 	pub physical_base: u64,
 	pub virtual_base: u64
 }
+
+#[repr(C)]
+pub struct HHDMRequest {
+	header: Header,
+	pub response: LiminePtr<HHDMResponse>
+}
+
+impl HHDMRequest {
+	pub const fn new() -> Self {
+		Self { header: Header::new([0x48dcf1cb8ad2b852, 0x63984e959a98244b]),
+			response: LiminePtr::null() }
+	}
+}
+
+unsafe impl Sync for HHDMRequest {}
+
+#[repr(C)]
+pub struct HHDMResponse {
+	revision: u64,
+	pub offset: u64
+}
