@@ -173,6 +173,7 @@ static WRITER: Lazy<Mutex<Writer>> = Lazy::new(|| {
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {
+
 	    $crate::fb::_print(format_args!($($arg)*));
     };
 }
@@ -180,7 +181,7 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     () => {
-	    $crate::print!("\n")
+	    $crate::print!("\n");
     };
 	($($arg:tt)*) => {
 		$crate::print!("{}\n", format_args!($($arg)*));
@@ -189,4 +190,9 @@ macro_rules! println {
 
 pub fn _print(args: fmt::Arguments) {
 	WRITER.get().lock().write_fmt(args).unwrap();
+}
+
+pub fn da() {
+	let f = WRITER.get().lock().fb.data as usize;
+	println!("{:#X}", f);
 }

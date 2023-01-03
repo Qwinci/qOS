@@ -97,7 +97,7 @@ pub struct MemMapEntry {
 }
 
 #[repr(u64)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MemType {
 	Usable,
 	Reserved,

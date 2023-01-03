@@ -106,7 +106,7 @@ macro_rules! bitflags {
 			}
 		}
 
-		impl core::ops::BitAnd for Flags {
+		impl core::ops::BitAnd for $struct_name {
 			type Output = Self;
 
 			fn bitand(self, rhs: Self) -> Self::Output {

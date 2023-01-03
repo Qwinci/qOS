@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 qos_macros = { git = "https://github.com/Qwinci/qOS", branch = "rust-macros" }
+x86_64 = "0.14.10"
 
 [package.metadata.qemu_runner]
 limine-branch = "v4.x-branch-binary"
@@ -28,7 +29,7 @@ run-args = ["-d", "int", "-no-reboot", "-no-shutdown"]
 run-command = ["qemu-system-x86_64",
     "-boot", "d",
     "-cdrom", "{}",
-    "-m", "2G",
+    "-m", "200M",
     "-machine", "q35",
     "-cpu", "qemu64",
     "-smp", "2"

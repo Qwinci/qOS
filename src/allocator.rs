@@ -1,16 +1,16 @@
 #![allow(unused)]
 
 use alloc::boxed::Box;
-use core::alloc::{GlobalAlloc, Layout};
+use core::alloc::{AllocError, GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
 use core::hint::unreachable_unchecked;
 use core::ptr::NonNull;
 use crate::allocator::page_allocator::PageAllocator;
 use crate::limine::MemType;
 use crate::paging::{Flags, PageTable, PhysAddr, VirtAddr};
-use crate::start::{HHDM_REQUEST, MEM_MAP_REQUEST};
+use crate::start::{HHDM_REQUEST, KERNEL_ADDRESS_REQUEST, MEM_MAP_REQUEST};
 use crate::sync::Mutex;
-use crate::utils::{set_high_half_offset, SIZE_2MB};
+use crate::utils::{KERNEL_BASE, set_high_half_offset, SIZE_2MB};
 use crate::{paging, print, println};
 
 mod page_allocator {
@@ -376,7 +376,7 @@ impl<const LOW: bool> Allocator<LOW> {
 	}
 }
 
-unsafe impl GlobalAlloc for Allocator {
+unsafe impl<const LOW: bool> GlobalAlloc for Allocator<LOW> {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
 		let aligned_layout = layout.pad_to_align();
 		self.alloc_size(aligned_layout.size())
@@ -384,7 +384,23 @@ unsafe impl GlobalAlloc for Allocator {
 
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
 		let aligned_layout = layout.pad_to_align();
-		self.dealloc_size(ptr, aligned_layout.size())
+		self.dealloc_size(ptr, aligned_layout.size());
+	}
+}
+
+unsafe impl<const LOW: bool> alloc::alloc::Allocator for Allocator<LOW> {
+	fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+		let aligned_layout = layout.pad_to_align();
+
+		let result = self.alloc_size(aligned_layout.size());
+		let slice = core::ptr::slice_from_raw_parts_mut(result, layout.size());
+
+		NonNull::new(slice).ok_or(AllocError)
+	}
+
+	unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+		let aligned_layout = layout.pad_to_align();
+		self.dealloc_size(ptr.as_ptr(), aligned_layout.size());
 	}
 }
 
@@ -395,6 +411,10 @@ pub static ALLOCATOR: Allocator = Allocator::new();
 pub static LOW_ALLOCATOR: Allocator<true> = Allocator::new();
 
 pub static PAGE_ALLOCATOR: Mutex<PageAllocator> = Mutex::new(PageAllocator::new());
+
+extern "C" {
+	static KERNEL_END: ();
+}
 
 pub fn init_memory() {
 	set_high_half_offset(HHDM_REQUEST.response.get().unwrap().offset as usize);
@@ -411,12 +431,21 @@ pub fn init_memory() {
 
 	drop(allocator);
 
-	let mut page_table = Box::new(PageTable::new());
+	let mut page_table = Box::new_in(PageTable::new(), &LOW_ALLOCATOR);
+
+	let mut kernel_phys_base = KERNEL_ADDRESS_REQUEST.response.get().unwrap().physical_base;
 
 	for i in 0..memmap.entry_count as usize {
 		let entry = unsafe {
-			&**memmap.entries.add(i)
+			&**(memmap.entries.add(i))
 		};
+
+		if !matches!(entry.mem_type,
+			MemType::Usable | MemType::Framebuffer |
+			MemType::KernelAndModules | MemType::BootloaderReclaimable) ||
+			entry.base == kernel_phys_base {
+			continue;
+		}
 
 		let mut base = entry.base as usize;
 		let mut aligned = false;
@@ -443,15 +472,44 @@ pub fn init_memory() {
 		}
 	}
 
+	let kernel_end = unsafe { &KERNEL_END as *const _ as usize };
 	let mut i = 0;
-	while i < 0x100000000 {
-		let phys = PhysAddr::new(i);
-		page_table.map(phys, phys.as_virt(), Flags::rw | Flags::huge);
-		i += SIZE_2MB;
+	let kernel_virt_base = KERNEL_ADDRESS_REQUEST.response.get().unwrap().virtual_base;
+	println!("kernel phys: {:#X}, kernel virt: {:#X}", kernel_phys_base, kernel_virt_base);
+	let mut needs_align = false;
+
+	let kernel_size = kernel_end - KERNEL_BASE;
+	println!("kernel size: {}", kernel_size);
+
+	if kernel_phys_base as usize & (SIZE_2MB - 1) != 0 {
+		needs_align = true;
+		kernel_phys_base &= !(SIZE_2MB - 1) as u64;
 	}
+
+	while i < kernel_size {
+		let phys = PhysAddr::new(kernel_phys_base as usize + i);
+		let virt = VirtAddr::new(kernel_virt_base as usize + i);
+		println!("mapping {:?} to {:?}", phys, virt);
+		page_table.map(phys, virt, Flags::rw | Flags::huge);
+		if !needs_align {
+			i += SIZE_2MB;
+			//i += 0x1000;
+		}
+		else {
+			needs_align = false;
+		}
+	}
+
+	let mut i = 0;
+	/*while i < 0x100000000 {
+		let phys = PhysAddr::new(i);
+		page_table.map(phys, phys.as_virt(), Flags::rw);
+		//i += SIZE_2MB;
+		i += 0x1000;
+	}*/
 
 	let page_table = Box::leak(page_table);
 	println!("before");
 	crate::x86::reg::Cr3::write(page_table);
-	//println!("after");
+	println!("after");
 }

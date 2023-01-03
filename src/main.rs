@@ -1,5 +1,7 @@
 #![feature(pointer_byte_offsets)]
 #![feature(once_cell)]
+#![feature(abi_x86_interrupt)]
+#![feature(allocator_api)]
 #![no_std]
 #![no_main]
 
@@ -18,6 +20,7 @@ mod utils;
 mod paging;
 mod bitflags;
 mod x86;
+mod interrupts;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u32)]

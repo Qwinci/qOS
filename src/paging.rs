@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 use core::fmt::{Debug, Formatter};
-use crate::{bitflags, println};
+use crate::{bitflags, print, println};
 use crate::utils::{get_high_half_offset, HIGH_HALF_OFFSET};
 
 bitflags! {
@@ -148,53 +148,54 @@ impl PageTable {
 		virt_addr >>= 9;
 		let pml4_offset = virt_addr & 0x1FF;
 
-		let pdp_e = &mut self.entries[pml4_offset];
-		let pdp_flags = pdp_e.get_flags();
-		let pdp = if !pdp_flags.get_present() {
-			pdp_e.set_flags(flags);
+		let pdp_entry = if self.entries[pml4_offset].get_flags().get_present() {
+			unsafe {
+				core::mem::transmute(self.entries[pml4_offset].get_addr().as_virt().as_usize())
+			}
+		} else {
 			let frame = Box::new(AlignedFrame { entries: [PageTableEntry::new(); 512] });
 			let frame = Box::leak(frame);
-			pdp_e.set_addr(VirtAddr::new(frame as *mut _ as usize).as_phys());
-			&mut frame.entries
-		} else {
-			unsafe { core::mem::transmute(pdp_e.get_addr().as_virt().as_usize()) }
+			let pml4_entry = &mut self.entries[pml4_offset];
+			pml4_entry.set_flags(flags);
+			pml4_entry.set_addr(VirtAddr::new(frame as *mut _ as usize).as_phys());
+			frame
 		};
 
-		let pd_e = &mut pdp[pdp_offset];
-		let pd_flags = pd_e.get_flags();
-		let pd = if !pd_flags.get_present() {
-			pd_e.set_flags(flags);
+		let pd_entry = if pdp_entry.entries[pdp_offset].get_flags().get_present() {
+			unsafe {
+				core::mem::transmute(pdp_entry.entries[pdp_offset].get_addr().as_virt().as_usize())
+			}
+		} else {
 			let frame = Box::new(AlignedFrame { entries: [PageTableEntry::new(); 512] });
 			let frame = Box::leak(frame);
-			pd_e.set_addr(VirtAddr::new(frame as *mut _ as usize).as_phys());
-			&mut frame.entries
-		} else {
-			unsafe { core::mem::transmute(pdp_e.get_addr().as_virt().as_usize()) }
+			let pdp_entry = &mut pdp_entry.entries[pdp_offset];
+			pdp_entry.set_flags(flags);
+			pdp_entry.set_addr(VirtAddr::new(frame as *mut _ as usize).as_phys());
+			frame
 		};
-
-		let pt_e = &mut pd[pd_offset];
-		let pt_flags = pt_e.get_flags();
 
 		if huge {
 			flags.set_huge(true);
-			pt_e.set_flags(flags);
-			pt_e.set_addr(phys);
+			pd_entry.entries[pd_offset].set_flags(flags);
+			pd_entry.entries[pd_offset].set_addr(phys);
 			return;
 		}
 
-		let pt = if !pt_flags.get_present() {
-			pt_e.set_flags(flags);
+		let pt_entry = if pd_entry.entries[pd_offset].get_flags().get_present() {
+			unsafe {
+				core::mem::transmute(pd_entry.entries[pd_offset].get_addr().as_virt().as_usize())
+			}
+		} else {
 			let frame = Box::new(AlignedFrame { entries: [PageTableEntry::new(); 512] });
 			let frame = Box::leak(frame);
-			pt_e.set_addr(VirtAddr::new(frame as *mut _ as usize).as_phys());
-			&mut frame.entries
-		} else {
-			unsafe { core::mem::transmute(pt_e.get_addr().as_virt().as_usize()) }
+			let pd_entry = &mut pd_entry.entries[pd_offset];
+			pd_entry.set_flags(flags);
+			pd_entry.set_addr(VirtAddr::new(frame as *mut _ as usize).as_phys());
+			frame
 		};
 
-		let p = &mut pt[pt_offset];
-		p.set_flags(flags);
-		p.set_addr(phys);
+		pt_entry.entries[pt_offset].set_flags(flags);
+		pt_entry.entries[pt_offset].set_addr(phys);
 	}
 }
 
