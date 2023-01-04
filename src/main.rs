@@ -2,6 +2,7 @@
 #![feature(once_cell)]
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
+#![feature(const_trait_impl)]
 #![no_std]
 #![no_main]
 

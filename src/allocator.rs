@@ -433,7 +433,7 @@ pub fn init_memory() {
 
 	let mut page_table = Box::new_in(PageTable::new(), &LOW_ALLOCATOR);
 
-	let mut kernel_phys_base = KERNEL_ADDRESS_REQUEST.response.get().unwrap().physical_base;
+	let mut kernel_phys_base = KERNEL_ADDRESS_REQUEST.response.get().unwrap().physical_base as usize;
 
 	for i in 0..memmap.entry_count as usize {
 		let entry = unsafe {
@@ -443,15 +443,15 @@ pub fn init_memory() {
 		if !matches!(entry.mem_type,
 			MemType::Usable | MemType::Framebuffer |
 			MemType::KernelAndModules | MemType::BootloaderReclaimable) ||
-			entry.base == kernel_phys_base {
+			entry.base == kernel_phys_base as u64 {
 			continue;
 		}
 
 		let mut base = entry.base as usize;
-		let mut aligned = false;
+		let mut align = 0;
 		if base & (SIZE_2MB - 1) != 0 {
+			align = base & (SIZE_2MB - 1);
 			base &= !(SIZE_2MB - 1);
-			aligned = true;
 		}
 		let phys = PhysAddr::new(base);
 		let mut flags = paging::Flags::new();
@@ -460,56 +460,34 @@ pub fn init_memory() {
 		flags.set_huge(true);
 
 		let mut i = 0;
-		while i < entry.length as usize {
+		let length = entry.length + align as u64;
+		while i < length as usize {
 			let phys = phys.offset(i as isize);
 			page_table.map(phys, phys.as_virt(), flags);
-			if !aligned {
-				i += SIZE_2MB;
-			}
-			else {
-				aligned = false;
-			}
+			i += SIZE_2MB;
 		}
 	}
 
 	let kernel_end = unsafe { &KERNEL_END as *const _ as usize };
-	let mut i = 0;
-	let kernel_virt_base = KERNEL_ADDRESS_REQUEST.response.get().unwrap().virtual_base;
-	println!("kernel phys: {:#X}, kernel virt: {:#X}", kernel_phys_base, kernel_virt_base);
-	let mut needs_align = false;
+	let kernel_virt_base = KERNEL_ADDRESS_REQUEST.response.get().unwrap().virtual_base as usize;
 
 	let kernel_size = kernel_end - KERNEL_BASE;
-	println!("kernel size: {}", kernel_size);
 
-	if kernel_phys_base as usize & (SIZE_2MB - 1) != 0 {
-		needs_align = true;
-		kernel_phys_base &= !(SIZE_2MB - 1) as u64;
+	let mut i = 0;
+	while (kernel_phys_base + i) & (SIZE_2MB - 1) != 0 {
+		let phys = PhysAddr::new(kernel_phys_base + i);
+		let virt = VirtAddr::new(kernel_virt_base + i);
+		page_table.map(phys, virt, Flags::RW);
+		i += 0x1000;
 	}
 
 	while i < kernel_size {
-		let phys = PhysAddr::new(kernel_phys_base as usize + i);
-		let virt = VirtAddr::new(kernel_virt_base as usize + i);
-		println!("mapping {:?} to {:?}", phys, virt);
-		page_table.map(phys, virt, Flags::rw | Flags::huge);
-		if !needs_align {
-			i += SIZE_2MB;
-			//i += 0x1000;
-		}
-		else {
-			needs_align = false;
-		}
+		let phys = PhysAddr::new(kernel_phys_base + i);
+		let virt = VirtAddr::new(kernel_virt_base + i);
+		page_table.map(phys, virt, Flags::RW | Flags::HUGE);
+		i += SIZE_2MB;
 	}
 
-	let mut i = 0;
-	/*while i < 0x100000000 {
-		let phys = PhysAddr::new(i);
-		page_table.map(phys, phys.as_virt(), Flags::rw);
-		//i += SIZE_2MB;
-		i += 0x1000;
-	}*/
-
 	let page_table = Box::leak(page_table);
-	println!("before");
 	crate::x86::reg::Cr3::write(page_table);
-	println!("after");
 }

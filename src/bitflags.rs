@@ -2,15 +2,15 @@
 macro_rules! bitflags {
 	(field $vis:vis, $field_name:ident, bool, $range:expr, $t:ty, $Self:ident) => {
 		qos_macros::replace! {
-			$vis const $field_name: Self = Self::from(Self::start_end_to_mask(($range).start, ($range).end));
+			$vis const [<$field_name:upper>]: Self = Self::from(Self::start_end_to_mask(($range).start, ($range).end));
 			$vis fn [<get_ $field_name>](&self) -> bool {
-				const MASK: $t = ($Self::$field_name).into_inner();
+				const MASK: $t = ($Self::[<$field_name:upper>]).into_inner();
 
 				((self.value & MASK) >> ($range).start) != 0
 			} }
 
 		qos_macros::replace! { $vis fn [<set_ $field_name>](&mut self, value: bool) {
-			const MASK: $t = ($Self::$field_name).into_inner();
+			const MASK: $t = ($Self::[<$field_name:upper>]).into_inner();
 
 			let value = ((value as $t) & (MASK >> ($range).start)) << ($range).start;
 
@@ -20,16 +20,16 @@ macro_rules! bitflags {
 	};
 	(field $vis:vis, $field_name:ident, $field_type:ty, $range:expr, $t:ty, $Self:ident) => {
 		qos_macros::replace! {
-			$vis const $field_name: Self = Self::from($Self::start_end_to_mask(($range).start, ($range).end));
+			$vis const [<$field_name:upper>]: Self = Self::from($Self::start_end_to_mask(($range).start, ($range).end));
 			$vis fn [<get_ $field_name>](&self) -> $field_type {
-				const MASK: $t = ($Self::$field_name).into_inner();
+				const MASK: $t = ($Self::[<$field_name:upper>]).into_inner();
 
 				((self.value & MASK) >> ($range).start) as $field_type
 			}
 		}
 
 		qos_macros::replace! { $vis fn [<set_ $field_name>](&mut self, value: $field_type) {
-			const MASK: $t = ($Self::$field_name).into_inner();
+			const MASK: $t = ($Self::[<$field_name:upper>]).into_inner();
 
 			let value = ((value as $t) & (MASK >> ($range).start)) << ($range).start;
 
@@ -98,7 +98,7 @@ macro_rules! bitflags {
 			)*
 		}
 
-	    impl core::ops::BitOr for $struct_name {
+	    impl const core::ops::BitOr for $struct_name {
 			type Output = Self;
 
 			fn bitor(self, rhs: Self) -> Self::Output {
@@ -106,7 +106,7 @@ macro_rules! bitflags {
 			}
 		}
 
-		impl core::ops::BitAnd for $struct_name {
+		impl const core::ops::BitAnd for $struct_name {
 			type Output = Self;
 
 			fn bitand(self, rhs: Self) -> Self::Output {

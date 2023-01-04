@@ -1,6 +1,6 @@
 [build]
 target = "x86_64-unknown-none"
 [target.'cfg(target_os = "none")']
-rustflags = ["-C", "link-arg=-T.cargo/kernel.ld", "-C", "force-frame-pointers=yes"]
+rustflags = ["-C", "link-arg=-T.cargo/kernel.ld", "-C", "force-frame-pointers=yes", "-C", "link-arg=-z,max-page-size=0x200000"]
 #rustflags = ["-C", "link-arg=--image-base=0xffffffff80000000", "-C", "force-frame-pointers=yes"]
 runner = "cargo qemu"

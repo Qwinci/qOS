@@ -20,7 +20,6 @@ impl Cr3 {
 		let virt = VirtAddr::new(table as *const _ as usize);
 		let addr = VirtAddr::new(table as *const _ as usize).as_phys().as_usize();
 		unsafe {
-			println!("pml4 addr: {:#X}", addr);
 			asm!("mov cr3, {}", in(reg) addr, options(preserves_flags, nostack));
 		}
 	}

@@ -5,7 +5,6 @@ use core::panic::PanicInfo;
 use crate::allocator::init_memory;
 use crate::limine::{FramebufferRequest, HHDMRequest, KernelAddressRequest, MemMapRequest, ModuleRequest, RSDPRequest};
 use crate::{exit_qemu, main, println, QemuExitCode, x86};
-use crate::fb::da;
 use crate::interrupts::{Idt, IdtEntry, IdtFlags, InterruptFrame, PageFaultFlags, PageFaultHandler};
 use crate::paging::{Flags, PhysAddr, VirtAddr};
 
@@ -57,6 +56,7 @@ extern "x86-interrupt" fn double_fault_handler(frame: x86_64::structures::idt::I
 const INT_GATE: u8 = 0b1110;
 const TRAP_GATE: u8 = 0b1111;
 
+#[repr(C)]
 struct GdtEntry {
 	limit0: u16,
 	base0: u16,
@@ -92,7 +92,7 @@ static mut GDT: [GdtEntry; 5] = [
 	GdtEntry::new(0xF2, 0xC)
 ];
 
-#[repr(packed)]
+#[repr(C, packed)]
 struct Gdtr {
 	size: u16,
 	offset: *mut GdtEntry
@@ -133,9 +133,6 @@ fn load_gdt() {
 
 #[no_mangle]
 extern "C" fn _start() {
-	println!("hello {}", 20);
-	da();
-
 	unsafe {
 		asm!("cli");
 	}
@@ -157,7 +154,6 @@ extern "C" fn _start() {
 	}
 
 	init_memory();
-	println!("hello {}", 20);
 
 	main();
 }

@@ -191,8 +191,3 @@ macro_rules! println {
 pub fn _print(args: fmt::Arguments) {
 	WRITER.get().lock().write_fmt(args).unwrap();
 }
-
-pub fn da() {
-	let f = WRITER.get().lock().fb.data as usize;
-	println!("{:#X}", f);
-}

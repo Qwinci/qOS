@@ -25,7 +25,7 @@ dependencies = [
 [[package]]
 name = "qos_macros"
 version = "0.1.0"
-source = "git+https://github.com/Qwinci/qOS?branch=rust-macros#0b83368fcfcd7ce6e73c6efd7fd01ef61e25d36c"
+source = "git+https://github.com/Qwinci/qOS?branch=rust-macros#272c0f6976ebd9b52ff10c9f906982eefa900d7b"
 
 [[package]]
 name = "rustversion"

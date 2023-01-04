@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::fmt::{Debug, Formatter};
 use crate::{bitflags, print, println};
-use crate::utils::{get_high_half_offset, HIGH_HALF_OFFSET};
+use crate::utils::{get_high_half_offset, HIGH_HALF_OFFSET, SIZE_2MB};
 
 bitflags! {
 	#[derive(Copy, Clone, PartialEq)]
@@ -128,8 +128,8 @@ impl PageTable {
 		let huge = flags.get_huge();
 
 		if huge {
-			assert_eq!(phys_addr & (0x200000 - 1), 0);
-			assert_eq!(virt_addr & (0x200000 - 1), 0);
+			assert_eq!(phys_addr & (SIZE_2MB - 1), 0);
+			assert_eq!(virt_addr & (SIZE_2MB - 1), 0);
 		}
 		else {
 			assert_eq!(phys_addr & (0x1000 - 1), 0);
@@ -150,7 +150,7 @@ impl PageTable {
 
 		let pdp_entry = if self.entries[pml4_offset].get_flags().get_present() {
 			unsafe {
-				core::mem::transmute(self.entries[pml4_offset].get_addr().as_virt().as_usize())
+				&mut *(self.entries[pml4_offset].get_addr().as_virt().as_usize() as *mut _)
 			}
 		} else {
 			let frame = Box::new(AlignedFrame { entries: [PageTableEntry::new(); 512] });
@@ -163,7 +163,7 @@ impl PageTable {
 
 		let pd_entry = if pdp_entry.entries[pdp_offset].get_flags().get_present() {
 			unsafe {
-				core::mem::transmute(pdp_entry.entries[pdp_offset].get_addr().as_virt().as_usize())
+				&mut *(pdp_entry.entries[pdp_offset].get_addr().as_virt().as_usize() as *mut _)
 			}
 		} else {
 			let frame = Box::new(AlignedFrame { entries: [PageTableEntry::new(); 512] });
@@ -183,7 +183,7 @@ impl PageTable {
 
 		let pt_entry = if pd_entry.entries[pd_offset].get_flags().get_present() {
 			unsafe {
-				core::mem::transmute(pd_entry.entries[pd_offset].get_addr().as_virt().as_usize())
+				&mut *(pd_entry.entries[pd_offset].get_addr().as_virt().as_usize() as *mut _)
 			}
 		} else {
 			let frame = Box::new(AlignedFrame { entries: [PageTableEntry::new(); 512] });
