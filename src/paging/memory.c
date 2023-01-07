@@ -2,8 +2,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "boot_info.h"
-#include "stdio.h"
-#include <stdbool.h>
 
 typedef struct Node {
 	size_t size;
@@ -13,7 +11,6 @@ typedef struct Node {
 
 static Node* root = NULL;
 static Node* end = NULL;
-static size_t offset = 0;
 
 static Node* node_new(void* address, size_t size, Node* next, Node* prev) {
 	Node* node = (Node*) address;
@@ -89,7 +86,7 @@ static void insert_node(void* ptr, size_t size) {
 void add_memory(void* memory, size_t size) {
 	if (size < 0x1000) return;
 	size_t pages = size / 0x1000;
-	insert_node(memory, pages);
+	insert_node((void*) to_virt((uintptr_t) memory), pages);
 }
 
 static void remove_node(Node* node, Node** r, Node** e) {
@@ -103,14 +100,12 @@ void* pmalloc(size_t count, MemoryAllocType type) {
 	bool start_from_root = type == MEMORY_ALLOC_TYPE_LOW;
 	Node* node = start_from_root ? root : end;
 
-	extern size_t p_offset;
-
 	if (!node) return NULL;
 	do {
 		if (node->size >= count) {
 			size_t remaining = node->size - count;
 			if (start_from_root) {
-				if ((uintptr_t) node - p_offset > 0xFFFFFFFF) return NULL;
+				if ((uintptr_t) node - HIGH_HALF_OFFSET > 0xFFFFFFFF) return NULL;
 				if (remaining == 0) {
 					remove_node(node, &root, &end);
 					return (void*) node;
@@ -146,10 +141,11 @@ void pfree(void* ptr, size_t count) {
 	insert_node(ptr, count);
 }
 
-extern char kernel_end[];
-extern size_t p_offset;
+extern char KERNEL_END[];
 
 void initialize_memory(const BootInfo* boot_info) {
+	HIGH_HALF_OFFSET = boot_info->hhdm_start;
+
 	for (size_t i = 0; i < boot_info->memory_map.entry_count; ++i) {
 		MemoryEntry* entry = boot_info->memory_map.entries[i];
 		if (entry->type == MEMORYTYPE_USABLE) {
@@ -164,52 +160,57 @@ void initialize_memory(const BootInfo* boot_info) {
 	for (size_t i = 0; i < boot_info->memory_map.entry_count; ++i) {
 		const MemoryEntry* entry = boot_info->memory_map.entries[i];
 		uintptr_t address = entry->base;
-		if (entry->type == MEMORYTYPE_FRAMEBUFFER || entry->type == MEMORYTYPE_USABLE) {
-			for (size_t i2 = 0; i2 < entry->size;) {
-				if (address & 0xFFF) {
-					address &= 0xFFFFFFFFFFFFF000;
-					pmap(
-							address + i2,
-							address + i2 + 0xFFFF800000000000,
-							PAGEFLAG_PRESENT | PAGEFLAG_RW);
-				}
-				else {
-					pmap(
-							address + i2,
-							address + i2 + 0xFFFF800000000000,
-							PAGEFLAG_PRESENT | PAGEFLAG_RW);
-					i2 += 0x1000;
-				}
-			}
+
+		if ((
+				entry->type != MEMORYTYPE_FRAMEBUFFER &&
+				entry->type != MEMORYTYPE_USABLE &&
+				entry->type != MEMORYTYPE_KERNEL_AND_MODULES &&
+				entry->type != MEMORYTYPE_BOOTLOADER_REACLAIMABLE) ||
+				entry->base == boot_info->kernel_physical_address) {
+			continue;
+		}
+
+		size_t align = 0;
+		if (address & (0x1000 - 1)) {
+			align = (address & (0x1000 - 1));
+			address &= (0x1000 - 1);
+		}
+
+		size_t i2 = 0;
+		while (((address + i2) & (SIZE_2MB - 1)) != 0 && i2 < entry->size + align) {
+			pmap(address + i2, HIGH_HALF_OFFSET + address + i2, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+			i2 += 0x1000;
+		}
+
+		while (i2 < entry->size + align) {
+			pmap(address + i2, HIGH_HALF_OFFSET + address + i2, PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_HUGE_PAGE);
+			i2 += SIZE_2MB;
 		}
 	}
-	for (size_t i = 0; i < 0x100000000; i += 0x1000) {
-		pmap(i, 0xFFFF800000000000 + i, PAGEFLAG_PRESENT | PAGEFLAG_RW);
+
+	for (size_t i = 0; i < 0x100000000; i += SIZE_2MB) {
+		pmap(i, to_virt(i), PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_HUGE_PAGE);
 	}
 
-	for (uintptr_t i = 0; i < (uintptr_t) kernel_end - boot_info->kernel_virtual_address; i += 0x1000) {
+	size_t i = 0;
+	const size_t KERNEL_SIZE = (uintptr_t) KERNEL_END - boot_info->kernel_virtual_address;
+	while (((boot_info->kernel_physical_address + i) & (SIZE_2MB - 1)) != 0 && i < KERNEL_SIZE) {
 		pmap(
 				boot_info->kernel_physical_address + i,
 				boot_info->kernel_virtual_address + i,
 				PAGEFLAG_PRESENT | PAGEFLAG_RW
-		);
+				);
+		i += 0x1000;
+	}
+
+	while (i < KERNEL_SIZE) {
+		pmap(
+				boot_info->kernel_physical_address + i,
+				boot_info->kernel_virtual_address + i,
+				PAGEFLAG_PRESENT | PAGEFLAG_RW | PAGEFLAG_HUGE_PAGE
+				);
+		i += SIZE_2MB;
 	}
 
 	preload();
-
-	if (!root) return;
-	Node* node = (Node*) ((uintptr_t) root + 0xFFFF800000000000);
-	root = (Node*) ((uintptr_t) root + 0xFFFF800000000000);
-	end = (Node*) ((uintptr_t) end + 0xFFFF800000000000);
-	while (node) {
-		if (node->next) {
-			node->next = (Node*) ((uintptr_t) node->next + 0xFFFF800000000000);
-		}
-		if (node->prev) {
-			node->prev = (Node*) ((uintptr_t) node->prev + 0xFFFF800000000000);
-		}
-		node = node->next;
-	}
-
-	p_offset = 0xFFFF800000000000;
 }

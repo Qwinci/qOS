@@ -57,8 +57,6 @@ void* locate_acpi_table(void* rsdp, const char* signature) {
 		size_t entries = (xsdt->header.length - sizeof(SDTHeader)) / 8;
 		for (size_t i = 0; i < entries; ++i) {
 			SDTHeader* header = (SDTHeader*) to_virt(xsdt->pointer[i]);
-			pmap(xsdt->pointer[i], to_virt(xsdt->pointer[i]), PAGEFLAG_PRESENT | PAGEFLAG_RW);
-			prefresh(to_virt(xsdt->pointer[i]));
 			if (strncmp((const char*) header, signature, 4) == 0) return header;
 		}
 	}

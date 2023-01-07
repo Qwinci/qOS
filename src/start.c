@@ -22,6 +22,10 @@ struct limine_module_request module_request = {
 		.id = LIMINE_MODULE_REQUEST
 };
 
+struct limine_hhdm_request hhdm_request = {
+		.id = LIMINE_HHDM_REQUEST
+};
+
 extern __attribute__((noreturn)) void kmain(BootInfo boot_info);
 
 static inline int strcmp(const char* str1, const char* str2) {
@@ -53,9 +57,11 @@ void start() {
 			case LIMINE_MEMMAP_FRAMEBUFFER:
 				entry->type = MEMORYTYPE_FRAMEBUFFER;
 				break;
+			case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+				entry->type = MEMORYTYPE_KERNEL_AND_MODULES;
+				break;
 			case LIMINE_MEMMAP_RESERVED:
 			case LIMINE_MEMMAP_BAD_MEMORY:
-			case LIMINE_MEMMAP_KERNEL_AND_MODULES:
 				entry->type = MEMORYTYPE_UNKNOWN;
 		}
 	}
@@ -75,6 +81,7 @@ void start() {
 	MemoryMap memory_map = {.entries = (MemoryEntry**) memmap_request.response->entries, .entry_count = memmap_request.response->entry_count};
 	boot_info.memory_map = memory_map;
 	boot_info.rsdp = rsdp_request.response->address;
+	boot_info.hhdm_start = hhdm_request.response->offset;
 	boot_info.kernel_virtual_address = kernel_address_request.response->virtual_base;
 	boot_info.kernel_physical_address = kernel_address_request.response->physical_base;
 	boot_info.font_start = font;

@@ -1,10 +1,14 @@
 #pragma once
 #include <stdint.h>
 
-const static inline uintptr_t to_virt(uintptr_t phys) {
-	return phys + 0xFFFF800000000000;
+extern size_t HIGH_HALF_OFFSET;
+
+static inline uintptr_t to_virt(uintptr_t phys) {
+	return phys + HIGH_HALF_OFFSET;
 }
 
-const static inline uintptr_t to_phys(uintptr_t virt) {
-	return virt - 0xFFFF800000000000;
+static inline uintptr_t to_phys(uintptr_t virt) {
+	return virt - HIGH_HALF_OFFSET;
 }
+
+static const uintptr_t SIZE_2MB = 0x200000;

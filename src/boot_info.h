@@ -15,6 +15,7 @@ typedef enum : uint64_t {
 	MEMORYTYPE_ACPI_NVS,
 	MEMORYTYPE_BOOTLOADER_REACLAIMABLE,
 	MEMORYTYPE_FRAMEBUFFER,
+	MEMORYTYPE_KERNEL_AND_MODULES,
 	MEMORYTYPE_UNKNOWN
 } MemoryType;
 
@@ -32,6 +33,7 @@ typedef struct MemoryMap {
 typedef struct BootInfo {
 	Framebuffer framebuffer;
 	MemoryMap memory_map;
+	uintptr_t hhdm_start;
 	uintptr_t kernel_virtual_address;
 	uintptr_t kernel_physical_address;
 	void* rsdp;

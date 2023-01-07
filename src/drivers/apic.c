@@ -175,11 +175,6 @@ void initialize_apic(void* rsdp) {
 	uint32_t flags = *(uint32_t*) madt;
 	madt += 4;
 
-	for (size_t i = (uintptr_t) header; i < (uintptr_t) header + header->length; i += 0x1000) {
-		pmap(to_phys(i) & ~0xFFF, i & ~0xFFF, PAGEFLAG_PRESENT | PAGEFLAG_RW);
-		prefresh(i & ~0xFFF);
-	}
-
 	uint8_t bsp_id;
 	__asm__ __volatile__("mov eax, 1; cpuid; shr ebx, 24" : "=b"(bsp_id));
 
@@ -309,6 +304,9 @@ void initialize_apic(void* rsdp) {
 	lapic_write(LAPIC_REG_SPURIOUS_INTERRUPT_VEC, 0xFF | 0x100);
 	lapic_write(LAPIC_REG_TASK_PRIORITY, 0);
 
+	// todo
+	return;
+
 	const uint32_t DEST_MODE_INIT = 5 << 8;
 	const uint32_t DEST_MODE_SIPI = 6 << 8;
 	const uint32_t DELIVERY_STATUS = 1 << 12;
@@ -321,10 +319,6 @@ void initialize_apic(void* rsdp) {
 
 	pmap(
 			trampoline_phys,
-			(uintptr_t) trampoline,
-			PAGEFLAG_PRESENT | PAGEFLAG_RW);
-	pmap(
-			trampoline_phys,
 			trampoline_phys,
 			PAGEFLAG_PRESENT | PAGEFLAG_RW);
 
@@ -333,10 +327,12 @@ void initialize_apic(void* rsdp) {
 			smp_trampoline_start,
 			trampoline_size);
 
+	printf("memcpy done\n");
+
 	extern uint64_t* pml4;
 
 	typedef struct {
-		uint8_t flag;
+		volatile uint8_t flag;
 		uint32_t page_table;
 		uint8_t apic_id;
 		uint64_t entry;
@@ -390,4 +386,6 @@ void initialize_apic(void* rsdp) {
 		}
 		else pfree((void*) (info->stack - 0x8000), 8);
 	}
+
+	printf("after init\n");
 }
