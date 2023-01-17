@@ -12,7 +12,7 @@ typedef struct Node {
 static Node* root = NULL;
 static Node* end = NULL;
 
-static Node* node_new(void* address, size_t size, Node* next, Node* prev) {
+static inline Node* node_new(void* address, size_t size, Node* next, Node* prev) {
 	Node* node = (Node*) address;
 	node->size = size;
 	node->next = next;
@@ -20,18 +20,30 @@ static Node* node_new(void* address, size_t size, Node* next, Node* prev) {
 	return node;
 }
 
-static void try_merge_node(Node* node, Node** e) {
-	if (node->next && (uintptr_t) node + node->size * 0x1000 == (uintptr_t) node->next) {
-		node->size += node->next->size;
-		node->next = node->next->next;
-		if (node->next->next) node->next->next->prev = node;
-		if (node->next == *e) *e = node;
+static void try_merge_node(Node* node) {
+	Node* next = node->next;
+	if ((uintptr_t) node + node->size * 0x1000 == (uintptr_t) next) {
+		node->size += next->size;
+
+		if (next->next) {
+			next->next->prev = node;
+		}
+		else {
+			end = node;
+		}
+		node->next = next->next;
 	}
-	if (node->prev && (uintptr_t) node->prev + node->prev->size * 0x1000 == (uintptr_t) node) {
-		node->prev->size += node->size;
+	Node* prev = node->prev;
+	if (prev && (uintptr_t) prev + prev->size * 0x1000 == (uintptr_t) node) {
+		prev->size += node->size;
+
+		if (node->next) {
+			node->next->prev = prev;
+		}
+		else {
+			end = prev;
+		}
 		node->prev->next = node->next;
-		if (node->next) node->next->prev = node->prev;
-		if (node == *e) *e = node->prev;
 	}
 }
 
@@ -48,7 +60,6 @@ static void insert_node(void* ptr, size_t size) {
 		}
 		end->next = node_new(ptr, size, NULL, end);
 		end = end->next;
-		try_merge_node(end, &end);
 		return;
 	}
 	else if (ptr < (void*) root) {
@@ -61,26 +72,21 @@ static void insert_node(void* ptr, size_t size) {
 		}
 		Node* node = node_new(ptr, size, root, NULL);
 		root->prev = node;
-		if (end == root) end = node;
 		root = node;
 		return;
 	}
 
 	Node* node = root;
 	while (node->next) {
-		if ((void*) node > ptr) {
-			Node* new_node = node_new(ptr, size, node, node->prev);
-			node->prev->next = new_node;
-			node->prev = node->prev->next;
-			try_merge_node(new_node, &end);
+		if ((void*) node->next > ptr) {
+			Node* new_node = node_new(ptr, size, node->next, node);
+			node->next->prev = new_node;
+			node->next = new_node;
+			try_merge_node(new_node);
 			return;
 		}
 		node = node->next;
 	}
-
-	node->next = node_new(ptr, size, NULL, node);
-	end = node->next;
-	try_merge_node(node, &end);
 }
 
 void add_memory(void* memory, size_t size) {
@@ -89,11 +95,20 @@ void add_memory(void* memory, size_t size) {
 	insert_node((void*) to_virt((uintptr_t) memory), pages);
 }
 
-static void remove_node(Node* node, Node** r, Node** e) {
-	if (node->prev) node->prev->next = node->next;
-	if (node->next) node->next->prev = node->prev;
-	if (node == *r) *r = node->next;
-	if (node == *e) *e = node->prev;
+static void remove_node(Node* node) {
+	if (node->prev) {
+		node->prev->next = node->next;
+	}
+	else {
+		root = node->next;
+	}
+
+	if (node->next) {
+		node->next->prev = node->prev;
+	}
+	else {
+		end = node->prev;
+	}
 }
 
 void* pmalloc(size_t count, MemoryAllocType type) {
@@ -107,7 +122,7 @@ void* pmalloc(size_t count, MemoryAllocType type) {
 			if (start_from_root) {
 				if ((uintptr_t) node - HIGH_HALF_OFFSET > 0xFFFFFFFF) return NULL;
 				if (remaining == 0) {
-					remove_node(node, &root, &end);
+					remove_node(node);
 					return (void*) node;
 				}
 				Node* new_node = (Node*) ((uintptr_t) node + count * 0x1000);
@@ -115,17 +130,26 @@ void* pmalloc(size_t count, MemoryAllocType type) {
 				new_node->prev = node->prev;
 				new_node->next = node->next;
 
-				if (node->prev) node->prev->next = new_node;
-				if (node->next) node->next->prev = new_node;
-				if (node == root) root = new_node;
-				if (node == end) end = new_node;
+				if (node->prev) {
+					node->prev->next = new_node;
+				}
+				else {
+					root = new_node;
+				}
+
+				if (node->next) {
+					node->next->prev = new_node;
+				}
+				else {
+					end = new_node;
+				}
 
 				return (void*) node;
 			}
 			else {
 				node->size = remaining;
 				if (node->size == 0) {
-					remove_node(node, &root, &end);
+					remove_node(node);
 					return (void*) node;
 				}
 				return (void*) ((uintptr_t) node + remaining * 0x1000);

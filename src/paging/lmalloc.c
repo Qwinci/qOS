@@ -12,7 +12,7 @@ typedef struct {
 
 // 8 16 32 64 128 256 512 1024 2048
 
-static inline const size_t get_size_index(size_t size) {
+static inline size_t get_size_index(size_t size) {
 	if (size <= 8) return 0;
 	else if (size <= 16) return 1;
 	else if (size <= 32) return 2;
@@ -25,7 +25,7 @@ static inline const size_t get_size_index(size_t size) {
 	else return 9;
 }
 
-static inline const size_t index_to_size(size_t index) {
+static inline size_t index_to_size(size_t index) {
 	if (index == 0) return 8;
 	else if (index == 1) return 16;
 	else if (index == 2) return 32;

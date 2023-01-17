@@ -16,7 +16,7 @@ static inline size_t pow(size_t value, uint8_t pow) {
 }
 
 // 8 16 32 64 128 256 512 1024 2048
-static inline const size_t get_size_index(size_t size) {
+static inline size_t get_size_index(size_t size) {
 	if (size > 2048) return 9;
 	uint8_t i = 3;
 	while (size > pow(2, i)) {
@@ -25,7 +25,7 @@ static inline const size_t get_size_index(size_t size) {
 	return i - 3;
 }
 
-static inline const size_t index_to_size(size_t index) {
+static inline size_t index_to_size(size_t index) {
 	return index < 9 ? pow(2, index + 3) : 0;
 }
 

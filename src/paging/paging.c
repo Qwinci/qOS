@@ -1,7 +1,6 @@
 #include "memory.h"
 #include <stdint.h>
 #include "std/memory.h"
-#include "stdio.h"
 
 uint64_t* pml4 = NULL;
 
